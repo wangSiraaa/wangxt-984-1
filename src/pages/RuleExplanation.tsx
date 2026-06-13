@@ -42,6 +42,7 @@ export default function RuleExplanation() {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    simulatedDate,
   } = useBusStore();
   const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id || "");
 
@@ -63,6 +64,7 @@ export default function RuleExplanation() {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    simulatedDate,
   });
 
   const stepIcons: Record<string, typeof User> = {

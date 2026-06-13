@@ -69,6 +69,12 @@ export function todayStr(): string {
   return formatDate(new Date());
 }
 
+export function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return formatDate(d);
+}
+
 export function daysUntil(dateStr: string): number {
   const target = new Date(dateStr);
   const today = new Date();
@@ -88,6 +94,36 @@ export function isTodayInRange(
   const e = new Date(endDate);
   e.setHours(23, 59, 59, 999);
   return today.getTime() >= s.getTime() && today.getTime() <= e.getTime();
+}
+
+export function isDateInRange(
+  dateStr: string,
+  startDate: string,
+  endDate?: string
+): boolean {
+  const d = new Date(dateStr);
+  d.setHours(12, 0, 0, 0);
+  const s = new Date(startDate);
+  s.setHours(0, 0, 0, 0);
+  if (!endDate) return s.getTime() <= d.getTime();
+  const e = new Date(endDate);
+  e.setHours(23, 59, 59, 999);
+  return d.getTime() >= s.getTime() && d.getTime() <= e.getTime();
+}
+
+export function getDayOfWeekFromDate(dateStr: string): number {
+  return new Date(dateStr).getDay();
+}
+
+export function formatDateCN(dateStr: string): string {
+  const d = new Date(dateStr);
+  const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${weekdays[d.getDay()]}`;
+}
+
+export function isWeekend(dateStr: string): boolean {
+  const day = new Date(dateStr).getDay();
+  return day === 0 || day === 6;
 }
 
 export function statusLabel(

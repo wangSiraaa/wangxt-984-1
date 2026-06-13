@@ -18,14 +18,14 @@ import {
   Users,
 } from "lucide-react";
 import { useBusStore } from "@/stores/busStore";
-import { daysUntil, routeColorClass } from "@/lib/utils";
+import { daysUntil, routeColorClass, getDayOfWeekFromDate } from "@/lib/utils";
 
 type TabType = "drivers" | "vehicles" | "schedule" | "inspection";
 
 export default function DriverVehicleDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>("drivers");
 
-  const { drivers, vehicles, routes, schedules, stops } = useBusStore();
+  const { drivers, vehicles, routes, schedules, stops, simulatedDate } = useBusStore();
 
   const tabs: { key: TabType; label: string; icon: typeof User }[] = [
     { key: "drivers", label: "司机看板", icon: User },
@@ -42,18 +42,18 @@ export default function DriverVehicleDashboard() {
   const faultVehicles = vehicles.filter((v) => v.status === "fault");
   const fullVehicles = vehicles.filter((v) => v.status === "full");
 
-  const today = new Date();
-  const todaySchedules = schedules.filter((s) => s.dayOfWeek.includes(today.getDay()));
+  const currentDayOfWeek = getDayOfWeekFromDate(simulatedDate);
+  const todaySchedules = schedules.filter((s) => s.dayOfWeek.includes(currentDayOfWeek));
 
   const getDriverSchedules = (driverId: string) => {
     return schedules.filter(
-      (s) => s.driverId === driverId && s.dayOfWeek.includes(today.getDay())
+      (s) => s.driverId === driverId && s.dayOfWeek.includes(currentDayOfWeek)
     );
   };
 
   const getVehicleSchedules = (vehicleId: string) => {
     return schedules.filter(
-      (s) => s.vehicleId === vehicleId && s.dayOfWeek.includes(today.getDay())
+      (s) => s.vehicleId === vehicleId && s.dayOfWeek.includes(currentDayOfWeek)
     );
   };
 

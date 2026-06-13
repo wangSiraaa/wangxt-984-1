@@ -48,6 +48,7 @@ export default function StudentView() {
     addSwipeRecord,
     updateVehicleLoad,
     addHistory,
+    simulatedDate,
   } = useBusStore();
 
   const currentStudent = students.find((s) => s.id === currentStudentId);
@@ -70,6 +71,7 @@ export default function StudentView() {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    simulatedDate,
   });
 
   const gradeRule = gradeRouteRules.find((r) => r.grade === currentStudent?.grade);

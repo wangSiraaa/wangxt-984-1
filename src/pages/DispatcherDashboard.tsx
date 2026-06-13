@@ -14,7 +14,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { useBusStore } from "@/stores/busStore";
-import { routeColorClass, statusLabel, daysUntil, gradeLabel } from "@/lib/utils";
+import { routeColorClass, statusLabel, daysUntil, gradeLabel, getDayOfWeekFromDate } from "@/lib/utils";
 import { useBusDerivation } from "@/hooks/useBusDerivation";
 
 type TabType = "routes" | "stops" | "vehicles" | "drivers" | "schedules" | "outages" | "detours" | "weather";
@@ -39,6 +39,7 @@ export default function DispatcherDashboard() {
     resetAll,
     addHistory,
     assignReplacementVehicle,
+    simulatedDate,
   } = useBusStore();
 
   const { stopArrivals } = useBusDerivation({
@@ -58,7 +59,10 @@ export default function DispatcherDashboard() {
     parentAuths: [],
     leaveRecords: [],
     swipeRecords: [],
+    simulatedDate,
   });
+
+  const currentDayOfWeek = getDayOfWeekFromDate(simulatedDate);
 
   const tabs: { key: TabType; label: string; icon: typeof Route }[] = [
     { key: "routes", label: "线路管理", icon: Route },
@@ -119,7 +123,7 @@ export default function DispatcherDashboard() {
     { label: "在线线路", value: routes.filter((r) => r.isActive).length, total: routes.length, color: "navy" },
     { label: "运营站点", value: stops.filter((s) => !s.isClosed).length, total: stops.length, color: "jade" },
     { label: "正常车辆", value: vehicles.filter((v) => v.status === "normal" || v.status === "replacement").length, total: vehicles.length, color: "amber" },
-    { label: "今日班次", value: schedules.filter((s) => s.isActive && s.dayOfWeek.includes(new Date().getDay())).length, total: schedules.length, color: "crimson" },
+    { label: "今日班次", value: schedules.filter((s) => s.isActive && s.dayOfWeek.includes(currentDayOfWeek)).length, total: schedules.length, color: "crimson" },
   ];
 
   return (
@@ -427,7 +431,7 @@ export default function DispatcherDashboard() {
                       <div className="col-span-2">
                         <span className="text-ink-500">今日班次：</span>
                         <span className="ml-2">
-                          {driverSchedules.filter((s) => s.dayOfWeek.includes(new Date().getDay())).length} 班
+                          {driverSchedules.filter((s) => s.dayOfWeek.includes(currentDayOfWeek)).length} 班
                         </span>
                       </div>
                     </div>

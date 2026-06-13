@@ -24,6 +24,8 @@ import {
   addMinutes,
   minutesBetween,
   isTodayInRange,
+  isDateInRange,
+  getDayOfWeekFromDate,
   todayStr,
   uid,
 } from "@/lib/utils";
@@ -46,6 +48,7 @@ interface DerivationInputs {
   leaveRecords: LeaveRecord[];
   swipeRecords: SwipeRecord[];
   currentTime?: string;
+  simulatedDate?: string;
 }
 
 function getStopOrderInRoute(route: Route, stopId: string): number {
@@ -58,18 +61,19 @@ function getStopMinutesInRoute(route: Route, stopId: string): number {
   return stop?.estimatedMinutes ?? 0;
 }
 
-function getActiveDetour(routeId: string, detours: Detour[]): Detour | undefined {
+function getActiveDetour(routeId: string, detours: Detour[], dateStr: string): Detour | undefined {
   return detours.find(
-    (d) => d.routeId === routeId && d.isActive && isTodayInRange(d.startDate, d.endDate)
+    (d) => d.routeId === routeId && d.isActive && isDateInRange(dateStr, d.startDate, d.endDate)
   );
 }
 
 function getActiveOutage(
   outageFilter: { routeId?: string; vehicleId?: string; scheduleId?: string },
-  outages: Outage[]
+  outages: Outage[],
+  dateStr: string
 ): Outage | undefined {
   return outages.find((o) => {
-    if (!o.isActive || !isTodayInRange(o.startDate, o.endDate)) return false;
+    if (!o.isActive || !isDateInRange(dateStr, o.startDate, o.endDate)) return false;
     if (outageFilter.routeId && o.routeId !== outageFilter.routeId) return false;
     if (outageFilter.vehicleId && o.vehicleId !== outageFilter.vehicleId) return false;
     if (outageFilter.scheduleId && o.scheduleId !== outageFilter.scheduleId) return false;
@@ -77,17 +81,17 @@ function getActiveOutage(
   });
 }
 
-function getActiveStopClosure(stopId: string, closures: StopClosure[]): StopClosure | undefined {
+function getActiveStopClosure(stopId: string, closures: StopClosure[], dateStr: string): StopClosure | undefined {
   return closures.find(
-    (c) => c.stopId === stopId && c.isActive && isTodayInRange(c.startDate, c.endDate)
+    (c) => c.stopId === stopId && c.isActive && isDateInRange(dateStr, c.startDate, c.endDate)
   );
 }
 
-function getActiveWeatherDelay(delays: WeatherDelay[], routeId?: string): WeatherDelay | undefined {
+function getActiveWeatherDelay(delays: WeatherDelay[], routeId: string | undefined, dateStr: string): WeatherDelay | undefined {
   return delays.find(
     (d) =>
       d.isActive &&
-      isTodayInRange(d.effectiveDate) &&
+      isDateInRange(dateStr, d.effectiveDate) &&
       (!routeId || !d.routeId || d.routeId === routeId)
   );
 }
@@ -103,13 +107,14 @@ function getGradeRule(
 function getTempStop(
   scheduleId: string,
   stopId: string,
-  rules: TempStopRule[]
+  rules: TempStopRule[],
+  dateStr: string
 ): TempStopRule | undefined {
   return rules.find(
     (r) =>
       r.scheduleId === scheduleId &&
       r.stopId === stopId &&
-      isTodayInRange(r.effectiveDate, r.endDate)
+      isDateInRange(dateStr, r.effectiveDate, r.endDate)
   );
 }
 
@@ -121,15 +126,15 @@ function getEscortRule(
   return rules.find((r) => r.grade === grade && r.teacherId === teacherId);
 }
 
-function getParentAuth(studentId: string, auths: ParentAuth[]): ParentAuth | undefined {
+function getParentAuth(studentId: string, auths: ParentAuth[], dateStr: string): ParentAuth | undefined {
   return auths.find(
-    (a) => a.studentId === studentId && isTodayInRange(a.authorizedAt, a.expiresAt)
+    (a) => a.studentId === studentId && isDateInRange(dateStr, a.authorizedAt, a.expiresAt)
   );
 }
 
-function getActiveLeave(studentId: string, leaves: LeaveRecord[]): LeaveRecord | undefined {
+function getActiveLeave(studentId: string, leaves: LeaveRecord[], dateStr: string): LeaveRecord | undefined {
   return leaves.find(
-    (l) => l.studentId === studentId && l.status === "approved" && isTodayInRange(l.startDate, l.endDate)
+    (l) => l.studentId === studentId && l.status === "approved" && isDateInRange(dateStr, l.startDate, l.endDate)
   );
 }
 
@@ -161,10 +166,11 @@ export function useBusDerivation(inputs: DerivationInputs) {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    simulatedDate,
   } = inputs;
 
-  const today = todayStr();
-  const dayOfWeek = new Date().getDay();
+  const effectiveDate = simulatedDate || todayStr();
+  const dayOfWeek = getDayOfWeekFromDate(effectiveDate);
 
   const derivationResult = useMemo<DerivationResult | null>(() => {
     if (!student) return null;

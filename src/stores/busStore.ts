@@ -40,8 +40,9 @@ import {
   initialLeaveRecords,
   initialSwipeRecords,
   initialHistory,
+  generateDynamicInitialData,
 } from "@/data/initialData";
-import { uid, todayStr } from "@/lib/utils";
+import { uid, todayStr, isDateInRange } from "@/lib/utils";
 
 export interface BusState {
   routes: Route[];
@@ -65,10 +66,13 @@ export interface BusState {
   darkMode: boolean;
   currentStudentId: string;
   currentStopId: string;
+  simulatedDate: string;
 
   setDarkMode: (v: boolean) => void;
   setCurrentStudentId: (id: string) => void;
   setCurrentStopId: (id: string) => void;
+  setSimulatedDate: (date: string) => void;
+  resetSimulatedDate: () => void;
 
   updateVehicleStatus: (id: string, status: VehicleStatus, faultReason?: string) => void;
   assignReplacementVehicle: (faultyVehicleId: string, replacementId: string) => void;
@@ -114,10 +118,13 @@ export const useBusStore = create<BusState>()(
       darkMode: true,
       currentStudentId: "ST001",
       currentStopId: "S001",
+      simulatedDate: todayStr(),
 
       setDarkMode: (v) => set({ darkMode: v }),
       setCurrentStudentId: (id) => set({ currentStudentId: id }),
       setCurrentStopId: (id) => set({ currentStopId: id }),
+      setSimulatedDate: (date) => set({ simulatedDate: date }),
+      resetSimulatedDate: () => set({ simulatedDate: todayStr() }),
 
       addHistory: (record) =>
         set((s) => ({
@@ -295,7 +302,8 @@ export const useBusStore = create<BusState>()(
           ),
         })),
 
-      resetAll: () =>
+      resetAll: () => {
+        const dynamic = generateDynamicInitialData(todayStr());
         set({
           routes: initialRoutes,
           stops: initialStops,
@@ -304,18 +312,20 @@ export const useBusStore = create<BusState>()(
           schedules: initialSchedules,
           students: initialStudents,
           teachers: initialTeachers,
-          gradeRouteRules: initialGradeRouteRules,
-          tempStopRules: initialTempStopRules,
+          gradeRouteRules: dynamic.gradeRouteRules,
+          tempStopRules: dynamic.tempStopRules,
           escortRules: initialEscortRules,
-          detours: initialDetours,
-          outages: initialOutages,
-          stopClosures: initialStopClosures,
-          weatherDelays: initialWeatherDelays,
-          parentAuths: initialParentAuths,
-          leaveRecords: initialLeaveRecords,
+          detours: dynamic.detours,
+          outages: dynamic.outages,
+          stopClosures: dynamic.stopClosures,
+          weatherDelays: dynamic.weatherDelays,
+          parentAuths: dynamic.parentAuths,
+          leaveRecords: dynamic.leaveRecords,
           swipeRecords: initialSwipeRecords,
           history: initialHistory,
-        }),
+          simulatedDate: todayStr(),
+        });
+      },
     }),
     {
       name: "campus-bus-store",
@@ -323,6 +333,7 @@ export const useBusStore = create<BusState>()(
         darkMode: s.darkMode,
         currentStudentId: s.currentStudentId,
         currentStopId: s.currentStopId,
+        simulatedDate: s.simulatedDate,
         vehicles: s.vehicles,
         stops: s.stops,
         detours: s.detours,
@@ -338,6 +349,56 @@ export const useBusStore = create<BusState>()(
         history: s.history,
         schedules: s.schedules,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const today = todayStr();
+        if (state.simulatedDate) {
+          state.simulatedDate = today;
+        }
+        const needsRefresh = (arr: any[], dateField: string, endField?: string) => {
+          if (!arr || arr.length === 0) return false;
+          return arr.some((item) => {
+            if (endField && item[endField]) {
+              return !isDateInRange(today, item[dateField], item[endField]);
+            }
+            return item[dateField] !== today;
+          });
+        };
+        const dynamic = generateDynamicInitialData(today);
+        let updated = false;
+        if (needsRefresh(state.weatherDelays, "effectiveDate") || !state.weatherDelays || state.weatherDelays.length === 0) {
+          state.weatherDelays = dynamic.weatherDelays;
+          updated = true;
+        }
+        if (needsRefresh(state.tempStopRules, "effectiveDate", "endDate") || !state.tempStopRules || state.tempStopRules.length === 0) {
+          state.tempStopRules = dynamic.tempStopRules;
+          updated = true;
+        }
+        if (needsRefresh(state.detours, "startDate", "endDate") || !state.detours || state.detours.length === 0) {
+          state.detours = dynamic.detours;
+          updated = true;
+        }
+        if (needsRefresh(state.outages, "startDate", "endDate") || !state.outages || state.outages.length === 0) {
+          state.outages = dynamic.outages;
+          updated = true;
+        }
+        if (needsRefresh(state.stopClosures, "startDate", "endDate") || !state.stopClosures || state.stopClosures.length === 0) {
+          state.stopClosures = dynamic.stopClosures;
+          updated = true;
+        }
+        if (needsRefresh(state.gradeRouteRules, "effectiveDate") || !state.gradeRouteRules || state.gradeRouteRules.length === 0) {
+          state.gradeRouteRules = dynamic.gradeRouteRules;
+          updated = true;
+        }
+        if (needsRefresh(state.parentAuths, "authorizedAt", "expiresAt") || !state.parentAuths || state.parentAuths.length === 0) {
+          state.parentAuths = dynamic.parentAuths;
+          updated = true;
+        }
+        if (needsRefresh(state.leaveRecords, "startDate", "endDate") || !state.leaveRecords || state.leaveRecords.length === 0) {
+          state.leaveRecords = dynamic.leaveRecords;
+          updated = true;
+        }
+      },
     }
   )
 );

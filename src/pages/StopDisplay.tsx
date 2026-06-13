@@ -17,6 +17,7 @@ export default function StopDisplay() {
     weatherDelays,
     currentStopId,
     setCurrentStopId,
+    simulatedDate,
   } = useBusStore();
 
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -43,6 +44,7 @@ export default function StopDisplay() {
     parentAuths: [],
     leaveRecords: [],
     swipeRecords: [],
+    simulatedDate,
   });
 
   const currentStop = stops.find((s) => s.id === currentStopId);

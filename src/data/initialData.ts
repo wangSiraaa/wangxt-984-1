@@ -17,6 +17,11 @@ import type {
   LeaveRecord,
   SwipeRecord,
   HistoryRecord,
+  TeacherRollCall,
+  StopCapacity,
+  DriverSchedule,
+  TempArrangement,
+  SwipeAbnormalRecord,
 } from "@/types";
 import { todayStr, uid, addDays } from "@/lib/utils";
 
@@ -496,3 +501,94 @@ export function generateDynamicInitialData(baseDate: string = todayStr()): Dynam
     ],
   };
 }
+
+export const initialTeacherRollCalls: TeacherRollCall[] = [
+  { id: "RC001", teacherId: "T001", scheduleId: "SCH004", stopId: "S006", date: today, studentId: "ST001", status: "present", notes: "已点名，正常乘车", recordedAt: new Date(Date.now() - 3600000).toISOString() },
+  { id: "RC002", teacherId: "T001", scheduleId: "SCH004", stopId: "S006", date: today, studentId: "ST002", status: "present", notes: "已点名，正常乘车", recordedAt: new Date(Date.now() - 3600000).toISOString() },
+  { id: "RC003", teacherId: "T001", scheduleId: "SCH004", stopId: "S006", date: today, studentId: "ST003", status: "absent", notes: "家长提前告知今日不乘车", recordedAt: new Date(Date.now() - 3600000).toISOString() },
+  { id: "RC004", teacherId: "T002", scheduleId: "SCH001", stopId: "S001", date: today, studentId: "ST004", status: "present", recordedAt: new Date(Date.now() - 3000000).toISOString() },
+  { id: "RC005", teacherId: "T002", scheduleId: "SCH002", stopId: "S002", date: today, studentId: "ST005", status: "present", recordedAt: new Date(Date.now() - 3000000).toISOString() },
+];
+
+export const initialStopCapacities: StopCapacity[] = [
+  { id: "CAP001", stopId: "S006", scheduleId: "SCH004", date: today, currentCount: 12, maxCapacity: 20, lastUpdated: new Date(Date.now() - 1800000).toISOString() },
+  { id: "CAP002", stopId: "S001", scheduleId: "SCH001", date: today, currentCount: 8, maxCapacity: 15, lastUpdated: new Date(Date.now() - 1800000).toISOString() },
+  { id: "CAP003", stopId: "S002", scheduleId: "SCH002", date: today, currentCount: 18, maxCapacity: 25, lastUpdated: new Date(Date.now() - 1800000).toISOString() },
+];
+
+export const initialDriverSchedules: DriverSchedule[] = [
+  { id: "DS001", driverId: "D001", scheduleId: "SCH001", date: today, status: "on_duty", updatedAt: new Date().toISOString() },
+  { id: "DS002", driverId: "D002", scheduleId: "SCH002", date: today, status: "on_duty", updatedAt: new Date().toISOString() },
+  { id: "DS003", driverId: "D003", scheduleId: "SCH003", date: today, status: "on_duty", updatedAt: new Date().toISOString() },
+  { id: "DS004", driverId: "D004", scheduleId: "SCH004", date: today, status: "on_duty", updatedAt: new Date().toISOString() },
+  { id: "DS005", driverId: "D005", scheduleId: "SCH005", date: today, status: "leave", replacementDriverId: "D001", notes: "司机请假，由D001代班", updatedAt: new Date().toISOString() },
+  { id: "DS006", driverId: "D001", scheduleId: "SCH005", date: today, status: "on_duty", notes: "代班驾驶", updatedAt: new Date().toISOString() },
+];
+
+export const initialTempArrangements: TempArrangement[] = [
+  {
+    id: "TA001",
+    type: "extra_vehicle",
+    title: "早高峰加开临时班车",
+    description: "因今日学生活动，7:50-8:10加开V006临时班车，途径S006、S001、S002",
+    routeId: "R001",
+    startDate: today,
+    endDate: addDays(today, 1),
+    isActive: true,
+    createdBy: "调度员",
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: "TA002",
+    type: "priority_student",
+    title: "受伤学生优先乘车",
+    description: "ST004同学脚部受伤，今日所有线路优先安排座位",
+    studentIds: ["ST004"],
+    startDate: today,
+    endDate: addDays(today, 7),
+    isActive: true,
+    createdBy: "班主任",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+];
+
+export const initialSwipeAbnormalRecords: SwipeAbnormalRecord[] = [
+  {
+    id: "ABN001",
+    studentId: "ST006",
+    scheduleId: "SCH005",
+    stopId: "S008",
+    vehicleId: "V005",
+    swipeTime: "07:38",
+    abnormalType: "wrong_route",
+    description: "家长未授权该线路乘车",
+    handled: false,
+  },
+  {
+    id: "ABN002",
+    studentId: "ST003",
+    scheduleId: "SCH003",
+    stopId: "S007",
+    vehicleId: "V007",
+    swipeTime: "07:32",
+    abnormalType: "too_early",
+    description: "提前20分钟到站刷卡，提醒注意发车时间",
+    handled: true,
+    handledBy: "随车老师",
+    handledAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: "ABN003",
+    studentId: "ST005",
+    scheduleId: "SCH002",
+    stopId: "S002",
+    vehicleId: "V002",
+    swipeTime: "07:46",
+    abnormalType: "capacity_full",
+    description: "车辆已满员，已安排后续班次V006",
+    handled: true,
+    handledBy: "调度员",
+    handledAt: new Date(Date.now() - 3000000).toISOString(),
+  },
+];
+

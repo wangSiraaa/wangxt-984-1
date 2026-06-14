@@ -20,6 +20,17 @@ import type {
   SwipeRecord,
   HistoryRecord,
   VehicleStatus,
+  TeacherRollCall,
+  StopCapacity,
+  DriverSchedule,
+  TempArrangement,
+  SwipeAbnormalRecord,
+  BoardingHint,
+  HistoryDerivationSnapshot,
+  RollCallStatus,
+  DriverScheduleStatus,
+  SwipeAbnormalType,
+  TempArrangementType,
 } from "@/types";
 import {
   initialRoutes,
@@ -41,6 +52,11 @@ import {
   initialSwipeRecords,
   initialHistory,
   generateDynamicInitialData,
+  initialTeacherRollCalls,
+  initialStopCapacities,
+  initialDriverSchedules,
+  initialTempArrangements,
+  initialSwipeAbnormalRecords,
 } from "@/data/initialData";
 import { uid, todayStr, isDateInRange } from "@/lib/utils";
 
@@ -63,6 +79,12 @@ export interface BusState {
   leaveRecords: LeaveRecord[];
   swipeRecords: SwipeRecord[];
   history: HistoryRecord[];
+  teacherRollCalls: TeacherRollCall[];
+  stopCapacities: StopCapacity[];
+  driverSchedules: DriverSchedule[];
+  tempArrangements: TempArrangement[];
+  swipeAbnormalRecords: SwipeAbnormalRecord[];
+  derivationSnapshots: HistoryDerivationSnapshot[];
   darkMode: boolean;
   currentStudentId: string;
   currentStopId: string;
@@ -90,6 +112,16 @@ export interface BusState {
   updateVehicleLoad: (vehicleId: string, delta: number) => void;
   resetAll: () => void;
   addHistory: (record: Omit<HistoryRecord, "id" | "timestamp">) => void;
+
+  addTeacherRollCall: (record: Omit<TeacherRollCall, "id" | "recordedAt">) => void;
+  updateStopCapacity: (stopId: string, scheduleId: string, currentCount: number) => void;
+  updateDriverSchedule: (driverId: string, scheduleId: string, status: DriverScheduleStatus, replacementDriverId?: string, notes?: string) => void;
+  addTempArrangement: (arrangement: Omit<TempArrangement, "id" | "createdAt">) => void;
+  toggleTempArrangement: (id: string, isActive: boolean) => void;
+  addSwipeAbnormalRecord: (record: Omit<SwipeAbnormalRecord, "id">) => void;
+  handleSwipeAbnormal: (abnormalId: string, handledBy: string) => void;
+  addDerivationSnapshot: (snapshot: Omit<HistoryDerivationSnapshot, "id">) => void;
+  setRollCallStatus: (teacherId: string, scheduleId: string, stopId: string, studentId: string, status: RollCallStatus, notes?: string) => void;
 }
 
 const today = todayStr();
@@ -115,6 +147,12 @@ export const useBusStore = create<BusState>()(
       leaveRecords: initialLeaveRecords,
       swipeRecords: initialSwipeRecords,
       history: initialHistory,
+      teacherRollCalls: initialTeacherRollCalls,
+      stopCapacities: initialStopCapacities,
+      driverSchedules: initialDriverSchedules,
+      tempArrangements: initialTempArrangements,
+      swipeAbnormalRecords: initialSwipeAbnormalRecords,
+      derivationSnapshots: [],
       darkMode: true,
       currentStudentId: "ST001",
       currentStopId: "S001",
@@ -323,9 +361,166 @@ export const useBusStore = create<BusState>()(
           leaveRecords: dynamic.leaveRecords,
           swipeRecords: initialSwipeRecords,
           history: initialHistory,
+          teacherRollCalls: initialTeacherRollCalls,
+          stopCapacities: initialStopCapacities,
+          driverSchedules: initialDriverSchedules,
+          tempArrangements: initialTempArrangements,
+          swipeAbnormalRecords: initialSwipeAbnormalRecords,
+          derivationSnapshots: [],
           simulatedDate: todayStr(),
         });
       },
+
+      addTeacherRollCall: (record) =>
+        set((s) => ({
+          teacherRollCalls: [
+            { ...record, id: uid("RC_"), recordedAt: new Date().toISOString() },
+            ...s.teacherRollCalls,
+          ],
+        })),
+
+      setRollCallStatus: (teacherId, scheduleId, stopId, studentId, status, notes) =>
+        set((s) => {
+          const dateStr = todayStr();
+          const existing = s.teacherRollCalls.find(
+            (r) =>
+              r.teacherId === teacherId &&
+              r.scheduleId === scheduleId &&
+              r.stopId === stopId &&
+              r.studentId === studentId &&
+              r.date === dateStr
+          );
+          if (existing) {
+            return {
+              teacherRollCalls: s.teacherRollCalls.map((r) =>
+                r.id === existing.id ? { ...r, status, notes, recordedAt: new Date().toISOString() } : r
+              ),
+            };
+          }
+          return {
+            teacherRollCalls: [
+              {
+                id: uid("RC_"),
+                teacherId,
+                scheduleId,
+                stopId,
+                date: dateStr,
+                studentId,
+                status,
+                notes,
+                recordedAt: new Date().toISOString(),
+              },
+              ...s.teacherRollCalls,
+            ],
+          };
+        }),
+
+      updateStopCapacity: (stopId, scheduleId, currentCount) =>
+        set((s) => {
+          const dateStr = todayStr();
+          const existing = s.stopCapacities.find((c) => c.stopId === stopId && c.scheduleId === scheduleId && c.date === dateStr);
+          if (existing) {
+            return {
+              stopCapacities: s.stopCapacities.map((c) =>
+                c.id === existing.id ? { ...c, currentCount, lastUpdated: new Date().toISOString() } : c
+              ),
+            };
+          }
+          return {
+            stopCapacities: [
+              ...s.stopCapacities,
+              {
+                id: uid("CAP_"),
+                stopId,
+                scheduleId,
+                date: dateStr,
+                currentCount,
+                maxCapacity: 20,
+                lastUpdated: new Date().toISOString(),
+              },
+            ],
+          };
+        }),
+
+      updateDriverSchedule: (driverId, scheduleId, status, replacementDriverId, notes) =>
+        set((s) => {
+          const dateStr = todayStr();
+          const existing = s.driverSchedules.find((d) => d.driverId === driverId && d.scheduleId === scheduleId && d.date === dateStr);
+          s.addHistory({
+            type: "driver",
+            entityType: "DriverSchedule",
+            entityId: scheduleId,
+            action: "driver_status",
+            data: { driverId, scheduleId, status, replacementDriverId, notes },
+            operator: "调度员",
+          });
+          if (existing) {
+            return {
+              driverSchedules: s.driverSchedules.map((d) =>
+                d.id === existing.id
+                  ? { ...d, status, replacementDriverId, notes, updatedAt: new Date().toISOString() }
+                  : d
+              ),
+            };
+          }
+          return {
+            driverSchedules: [
+              ...s.driverSchedules,
+              {
+                id: uid("DS_"),
+                driverId,
+                scheduleId,
+                date: dateStr,
+                status,
+                replacementDriverId,
+                notes,
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          };
+        }),
+
+      addTempArrangement: (arrangement) =>
+        set((s) => ({
+          tempArrangements: [
+            { ...arrangement, id: uid("TA_"), createdAt: new Date().toISOString() },
+            ...s.tempArrangements,
+          ],
+        })),
+
+      toggleTempArrangement: (id, isActive) =>
+        set((s) => ({
+          tempArrangements: s.tempArrangements.map((a) => (a.id === id ? { ...a, isActive } : a)),
+        })),
+
+      addSwipeAbnormalRecord: (record) =>
+        set((s) => {
+          s.addHistory({
+            type: "swipe",
+            entityType: "SwipeAbnormalRecord",
+            entityId: record.studentId,
+            action: "abnormal",
+            data: { abnormalType: record.abnormalType, description: record.description, scheduleId: record.scheduleId },
+            operator: "车载刷卡机",
+          });
+          return {
+            swipeAbnormalRecords: [{ ...record, id: uid("ABN_") }, ...s.swipeAbnormalRecords],
+          };
+        }),
+
+      handleSwipeAbnormal: (abnormalId, handledBy) =>
+        set((s) => ({
+          swipeAbnormalRecords: s.swipeAbnormalRecords.map((a) =>
+            a.id === abnormalId
+              ? { ...a, handled: true, handledBy, handledAt: new Date().toISOString() }
+              : a
+          ),
+        })),
+
+      addDerivationSnapshot: (snapshot) =>
+        set((s) => ({
+          derivationSnapshots: [{ ...snapshot, id: uid("SNAP_") }, ...s.derivationSnapshots].slice(0, 100),
+        })),
     }),
     {
       name: "campus-bus-store",
@@ -348,6 +543,12 @@ export const useBusStore = create<BusState>()(
         swipeRecords: s.swipeRecords,
         history: s.history,
         schedules: s.schedules,
+        teacherRollCalls: s.teacherRollCalls,
+        stopCapacities: s.stopCapacities,
+        driverSchedules: s.driverSchedules,
+        tempArrangements: s.tempArrangements,
+        swipeAbnormalRecords: s.swipeAbnormalRecords,
+        derivationSnapshots: s.derivationSnapshots,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;

@@ -20,11 +20,20 @@ import {
   Pause,
   SkipBack,
   SkipForward,
+  Eye,
+  XCircle,
+  CheckCircle2,
+  AlertTriangle,
+  Info,
+  UserCheck,
 } from "lucide-react";
 import { useBusStore } from "@/stores/busStore";
-import { cn } from "@/lib/utils";
+import { useBusDerivation } from "@/hooks/useBusDerivation";
+import { cn, routeColorClass } from "@/lib/utils";
+import type { HistoryDerivationSnapshot, RouteInvisibilityReason } from "@/types";
 
 type HistoryType = "all" | "vehicle" | "stop" | "route" | "rule" | "weather" | "swipe";
+type PlaybackTab = "timeline" | "visibility";
 
 const typeConfig: Record<HistoryType, { label: string; icon: typeof Car; color: string }> = {
   all: { label: "全部", icon: History, color: "ink" },
@@ -50,10 +59,42 @@ const actionLabels: Record<string, string> = {
   swipe: "刷卡乘车",
   approve: "审批通过",
   reject: "审批拒绝",
+  swipe_abnormal: "刷卡异常",
 };
 
 export default function HistoryPlayback() {
-  const { history, resetAll, routes, stops, vehicles, students, drivers } = useBusStore();
+  const {
+    history,
+    resetAll,
+    routes,
+    stops,
+    vehicles,
+    students,
+    drivers,
+    detours,
+    outages,
+    stopClosures,
+    weatherDelays,
+    gradeRouteRules,
+    tempStopRules,
+    escortRules,
+    parentAuths,
+    leaveRecords,
+    swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
+    derivationSnapshots,
+    simulatedDate,
+  } = useBusStore();
+
+  const [activeTab, setActiveTab] = useState<PlaybackTab>("timeline");
+  const [selectedStudentId, setSelectedStudentId] = useState<string>(students[0]?.id || "");
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
+  const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
+  const [showLiveAnalysis, setShowLiveAnalysis] = useState(false);
   const [activeType, setActiveType] = useState<HistoryType>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -157,6 +198,36 @@ export default function HistoryPlayback() {
     };
   }, [history]);
 
+  const schedules = useBusStore((s) => s.schedules);
+  const selectedStudent = students.find((s) => s.id === selectedStudentId);
+
+  const { derivationResult } = useBusDerivation({
+    student: selectedStudent,
+    routes,
+    stops,
+    vehicles,
+    drivers,
+    schedules,
+    detours,
+    outages,
+    stopClosures,
+    weatherDelays,
+    gradeRouteRules,
+    tempStopRules,
+    escortRules,
+    parentAuths,
+    leaveRecords,
+    swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
+    simulatedDate,
+  });
+
+  const studentSnapshots = derivationSnapshots.filter((s) => s.studentId === selectedStudentId);
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div className="flex items-center justify-between">
@@ -169,12 +240,329 @@ export default function HistoryPlayback() {
             查看系统操作历史记录，追溯所有调度和配置变更
           </p>
         </div>
-        <button onClick={handleReset} className="btn-secondary">
-          <RotateCcw size={16} />
-          重置数据
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowLiveAnalysis(!showLiveAnalysis)}
+            className={cn(
+              "btn-secondary",
+              showLiveAnalysis && "ring-2 ring-purple-400"
+            )}
+          >
+            <Eye size={16} />
+            线路可见性分析
+          </button>
+          <button onClick={handleReset} className="btn-secondary">
+            <RotateCcw size={16} />
+            重置数据
+          </button>
+        </div>
+      </div>
+
+      <div className="glass-card p-1.5 inline-flex gap-1">
+        <button
+          onClick={() => setActiveTab("timeline")}
+          className={cn(
+            "nav-chip",
+            activeTab === "timeline"
+              ? "bg-purple-600 text-white shadow-glow"
+              : "text-ink-500 hover:bg-ink-100 dark:hover:bg-navy-800"
+          )}
+        >
+          <Clock size={16} />
+          操作时间线
+        </button>
+        <button
+          onClick={() => setActiveTab("visibility")}
+          className={cn(
+            "nav-chip",
+            activeTab === "visibility"
+              ? "bg-purple-600 text-white shadow-glow"
+              : "text-ink-500 hover:bg-ink-100 dark:hover:bg-navy-800"
+          )}
+        >
+          <Eye size={16} />
+          线路可见性分析
         </button>
       </div>
 
+      {activeTab === "visibility" && (
+        <div className="space-y-6">
+          <div className="glass-card p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <User size={20} className="text-navy-500" />
+                选择分析对象
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {students.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedStudentId(s.id)}
+                  className={cn(
+                    "p-4 rounded-xl border-2 transition-all text-left",
+                    selectedStudentId === s.id
+                      ? "border-purple-400 bg-purple-50 dark:bg-purple-950/30"
+                      : "border-ink-200 dark:border-navy-700 hover:border-purple-300"
+                  )}
+                >
+                  <div className="font-medium">{s.name}</div>
+                  <div className="text-xs text-ink-500 mt-1">
+                    {s.grade}年级 · {s.className}
+                  </div>
+                  <div className="text-xs text-ink-400 mt-0.5">
+                    学号: {s.studentNo}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedStudent && derivationResult && (
+            <>
+              <div className="glass-card p-6">
+                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                  <UserCheck size={20} className="text-jade-500" />
+                  可乘线路 ({derivationResult.availableRoutes.length})
+                </h2>
+                {derivationResult.availableRoutes.length === 0 ? (
+                  <div className="text-center py-8 text-ink-400">
+                    该学生当前无可乘线路
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {derivationResult.availableRoutes.map((r) => (
+                      <div
+                        key={r.scheduleId}
+                        className="p-4 rounded-xl border border-jade-200 dark:border-jade-800 bg-jade-50/50 dark:bg-jade-950/20"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("px-2 py-1 rounded text-xs font-medium", routeColorClass(r.colorIndex))}>
+                              {r.routeCode}
+                            </span>
+                            <span className="font-medium">{r.routeName}</span>
+                          </div>
+                          <CheckCircle2 size={18} className="text-jade-500" />
+                        </div>
+                        <div className="mt-2 text-sm text-ink-600 dark:text-ink-300">
+                          预计 {r.estimatedArrival} 到站 · 余座 {r.availableSeats}
+                        </div>
+                        {r.boardingHints && r.boardingHints.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {r.boardingHints.map((h) => (
+                              <div
+                                key={h.id}
+                                className={cn(
+                                  "text-xs px-2 py-1 rounded",
+                                  h.type === "error" && "bg-crimson-100 text-crimson-700 dark:bg-crimson-950/30 dark:text-crimson-300",
+                                  h.type === "warning" && "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300",
+                                  h.type === "info" && "bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300",
+                                  h.type === "success" && "bg-jade-100 text-jade-700 dark:bg-jade-950/30 dark:text-jade-300"
+                                )}
+                              >
+                                {h.message}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="glass-card p-6">
+                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                  <XCircle size={20} className="text-crimson-500" />
+                  不可乘线路 ({derivationResult.blockedRoutes.length})
+                  <span className="text-sm font-normal text-ink-500 ml-2">
+                    点击展开查看具体原因
+                  </span>
+                </h2>
+                {derivationResult.blockedRoutes.length === 0 ? (
+                  <div className="text-center py-8 text-ink-400">
+                    所有线路对该学生均可见
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {derivationResult.blockedRoutes.map((r) => {
+                      const isExpanded = expandedRouteId === r.scheduleId;
+                      return (
+                        <div
+                          key={r.scheduleId}
+                          className="rounded-xl border border-crimson-200 dark:border-crimson-800 overflow-hidden"
+                        >
+                          <button
+                            onClick={() => setExpandedRouteId(isExpanded ? null : r.scheduleId)}
+                            className="w-full p-4 flex items-center justify-between text-left hover:bg-crimson-50/50 dark:hover:bg-crimson-950/10"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={cn("px-2 py-1 rounded text-xs font-medium", routeColorClass(r.colorIndex))}>
+                                {r.routeCode}
+                              </span>
+                              <span className="font-medium">{r.routeName}</span>
+                              <span className="text-sm text-ink-500">
+                                ({r.estimatedArrival})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-crimson-600 dark:text-crimson-300">
+                                {r.blockReasons.length} 项限制
+                              </span>
+                              {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                            </div>
+                          </button>
+                          {isExpanded && (
+                            <div className="p-4 pt-0 border-t border-crimson-100 dark:border-crimson-900 space-y-2">
+                              {r.invisibilityReasons && r.invisibilityReasons.length > 0 ? (
+                                r.invisibilityReasons.map((reason, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="p-3 rounded-lg bg-crimson-50 dark:bg-crimson-950/20"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <AlertTriangle size={14} className="text-crimson-500" />
+                                      <span className="font-medium text-crimson-700 dark:text-crimson-300 text-sm">
+                                        {reason.blockStep}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 text-sm text-ink-700 dark:text-ink-300">
+                                      {reason.blockReason}
+                                    </div>
+                                    {reason.suggestion && (
+                                      <div className="mt-1 text-xs text-jade-600 dark:text-jade-400 flex items-center gap-1">
+                                        <Info size={12} />
+                                        建议：{reason.suggestion}
+                                      </div>
+                                    )}
+                                    {reason.blockData && (
+                                      <details className="mt-2 text-xs text-ink-500">
+                                        <summary className="cursor-pointer hover:text-ink-700">
+                                          查看详细数据
+                                        </summary>
+                                        <pre className="mt-1 p-2 rounded bg-ink-100 dark:bg-navy-900/50 overflow-x-auto font-mono">
+                                          {JSON.stringify(reason.blockData, null, 2)}
+                                        </pre>
+                                      </details>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                r.blockReasons.map((reason, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex items-center gap-2 p-2 rounded-lg bg-crimson-50 dark:bg-crimson-950/20"
+                                  >
+                                    <AlertTriangle size={14} className="text-crimson-500 flex-shrink-0" />
+                                    <span className="text-sm text-ink-700 dark:text-ink-300">{reason}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="glass-card p-6">
+                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                  <FileText size={20} className="text-blue-500" />
+                  推导步骤详情
+                </h2>
+                <div className="space-y-2">
+                  {derivationResult.steps.map((step) => (
+                    <div
+                      key={step.id}
+                      className={cn(
+                        "p-3 rounded-lg border flex items-start gap-3",
+                        step.passed
+                          ? "border-jade-200 bg-jade-50/50 dark:border-jade-800 dark:bg-jade-950/10"
+                          : "border-crimson-200 bg-crimson-50/50 dark:border-crimson-800 dark:bg-crimson-950/10"
+                      )}
+                    >
+                      {step.passed ? (
+                        <CheckCircle2 size={18} className="text-jade-500 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <XCircle size={18} className="text-crimson-500 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">{step.name}</div>
+                        <div className="text-xs text-ink-500 mt-0.5">{step.description}</div>
+                        {step.reason && (
+                          <div className={cn(
+                            "text-xs mt-1",
+                            step.passed ? "text-jade-600 dark:text-jade-400" : "text-crimson-600 dark:text-crimson-400"
+                          )}>
+                            {step.reason}
+                          </div>
+                        )}
+                        {step.data && (
+                          <details className="mt-2 text-xs text-ink-500">
+                            <summary className="cursor-pointer hover:text-ink-700">
+                              查看数据
+                            </summary>
+                            <pre className="mt-1 p-2 rounded bg-ink-100 dark:bg-navy-900/50 overflow-x-auto font-mono">
+                              {JSON.stringify(step.data, null, 2)}
+                            </pre>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {studentSnapshots.length > 0 && (
+                <div className="glass-card p-6">
+                  <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                    <History size={20} className="text-amber-500" />
+                    历史推导快照 ({studentSnapshots.length})
+                  </h2>
+                  <div className="space-y-2">
+                    {studentSnapshots.slice(0, 10).map((snap) => (
+                      <div
+                        key={snap.id}
+                        className="p-3 rounded-lg border border-ink-200 dark:border-navy-700"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-ink-600 dark:text-ink-300">
+                            {formatFullDate(snap.timestamp)}
+                          </span>
+                          <span className="text-xs text-ink-500">
+                            可乘 {snap.availableRoutes.length} 条 · 
+                            阻塞 {snap.blockedRoutes.length} 条
+                          </span>
+                        </div>
+                        {snap.blockedRoutes.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {snap.blockedRoutes.slice(0, 3).map((b) => (
+                              <div key={b.routeId} className="text-xs text-crimson-600 dark:text-crimson-400">
+                                {b.routeName}: {b.blockReason}
+                              </div>
+                            ))}
+                            {snap.blockedRoutes.length > 3 && (
+                              <div className="text-xs text-ink-500">
+                                ...还有 {snap.blockedRoutes.length - 3} 条
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === "timeline" && (
+        <>
       <div className="grid grid-cols-4 gap-4">
         <div className="metric-card glass-card">
           <div className="flex items-center gap-3">
@@ -440,6 +828,8 @@ export default function HistoryPlayback() {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

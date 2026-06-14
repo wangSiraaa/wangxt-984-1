@@ -19,6 +19,15 @@ import type {
   ParentAuth,
   LeaveRecord,
   SwipeRecord,
+  TeacherRollCall,
+  StopCapacity,
+  DriverSchedule,
+  TempArrangement,
+  SwipeAbnormalRecord,
+  DriverScheduleStatus,
+  RollCallStatus,
+  RouteInvisibilityReason,
+  BoardingHint,
 } from "@/types";
 import {
   addMinutes,
@@ -47,6 +56,11 @@ interface DerivationInputs {
   parentAuths: ParentAuth[];
   leaveRecords: LeaveRecord[];
   swipeRecords: SwipeRecord[];
+  teacherRollCalls: TeacherRollCall[];
+  stopCapacities: StopCapacity[];
+  driverSchedules: DriverSchedule[];
+  tempArrangements: TempArrangement[];
+  swipeAbnormalRecords: SwipeAbnormalRecord[];
   currentTime?: string;
   simulatedDate?: string;
 }
@@ -148,6 +162,223 @@ function hasBoarded(studentId: string, scheduleId: string, swipes: SwipeRecord[]
   );
 }
 
+function getDriverScheduleStatus(
+  driverId: string,
+  scheduleId: string,
+  driverSchedules: DriverSchedule[],
+  dateStr: string
+): DriverScheduleStatus {
+  const ds = driverSchedules.find(
+    (d) => d.driverId === driverId && d.scheduleId === scheduleId && d.date === dateStr
+  );
+  return ds?.status ?? "scheduled";
+}
+
+function getStopCapacity(
+  stopId: string,
+  scheduleId: string,
+  capacities: StopCapacity[],
+  dateStr: string
+): StopCapacity | undefined {
+  return capacities.find((c) => c.stopId === stopId && c.scheduleId === scheduleId && c.date === dateStr);
+}
+
+function getRollCallStatus(
+  studentId: string,
+  scheduleId: string,
+  stopId: string,
+  rollCalls: TeacherRollCall[],
+  dateStr: string
+): RollCallStatus {
+  const rc = rollCalls.find(
+    (r) => r.studentId === studentId && r.scheduleId === scheduleId && r.stopId === stopId && r.date === dateStr
+  );
+  return rc?.status ?? "unknown";
+}
+
+function hasActiveAbnormalSwipe(
+  studentId: string,
+  scheduleId: string,
+  abnormalRecords: SwipeAbnormalRecord[],
+  dateStr: string
+): SwipeAbnormalRecord | undefined {
+  return abnormalRecords.find(
+    (a) =>
+      a.studentId === studentId &&
+      a.scheduleId === scheduleId &&
+      !a.handled &&
+      a.swipeTime.startsWith(dateStr)
+  );
+}
+
+function getActiveTempArrangements(
+  arrangements: TempArrangement[],
+  studentId: string,
+  routeId: string,
+  stopId: string,
+  dateStr: string
+): TempArrangement[] {
+  return arrangements.filter((a) => {
+    if (!a.isActive) return false;
+    if (!isDateInRange(dateStr, a.startDate, a.endDate)) return false;
+    if (a.routeId && a.routeId !== routeId) return false;
+    if (a.stopId && a.stopId !== stopId) return false;
+    if (a.studentIds && !a.studentIds.includes(studentId)) return false;
+    return true;
+  });
+}
+
+function generateTransferHints(
+  blockedRoutes: AvailableRoute[],
+  availableRoutes: AvailableRoute[],
+  student: Student,
+  stops: Stop[],
+  gradeRouteRules: GradeRouteRule[]
+): string[] {
+  const hints: string[] = [];
+  
+  const blockedDueToClosure = blockedRoutes.filter(
+    (r) => r.blockReasons.some((b) => b.includes("封闭") || b.includes("绕行"))
+  );
+  
+  if (blockedDueToClosure.length > 0 && availableRoutes.length > 0) {
+    const availableRouteNames = availableRoutes
+      .slice(0, 3)
+      .map((r) => `${r.routeName}(${r.estimatedArrival})`)
+      .join("、");
+    hints.push(`原乘车站点封闭/线路绕行，建议换乘 ${availableRouteNames}`);
+  }
+  
+  const blockedDueToCapacity = blockedRoutes.filter(
+    (r) => r.blockReasons.some((b) => b.includes("满员") || b.includes("容量"))
+  );
+  
+  if (blockedDueToCapacity.length > 0) {
+    const laterRoute = availableRoutes.find((r) => r.availableSeats > 0);
+    if (laterRoute) {
+      hints.push(`原线路已满员，建议乘坐 ${laterRoute.routeName}（${laterRoute.estimatedArrival}，余座${laterRoute.availableSeats}）`);
+    }
+  }
+
+  const blockedDueToGrade = blockedRoutes.filter(
+    (r) => r.blockReasons.some((b) => b.includes("年级限制"))
+  );
+  if (blockedDueToGrade.length > 0) {
+    const gradeRule = gradeRouteRules.find((r) => r.grade === student.grade);
+    const allowedNames = availableRoutes
+      .filter((r) => !gradeRule || gradeRule.allowedRouteIds.includes(r.routeId))
+      .slice(0, 2)
+      .map((r) => r.routeName)
+      .join("、");
+    if (allowedNames) {
+      hints.push(`${student.grade}年级学生仅可乘坐：${allowedNames}`);
+    }
+  }
+
+  const blockedDueToDriver = blockedRoutes.filter(
+    (r) => r.blockReasons.some((b) => b.includes("司机"))
+  );
+  if (blockedDueToDriver.length > 0 && availableRoutes.length > 0) {
+    hints.push(`部分线路司机临时调整，建议乘坐 ${availableRoutes[0]?.routeName}`);
+  }
+  
+  return hints;
+}
+
+function createInvisibilityReason(
+  route: Route,
+  blockStep: string,
+  blockReason: string,
+  suggestion?: string,
+  blockData?: Record<string, unknown>
+): RouteInvisibilityReason {
+  return {
+    routeId: route.id,
+    routeName: route.name,
+    routeCode: route.code,
+    blockStep,
+    blockReason,
+    suggestion,
+    blockData,
+  };
+}
+
+function generateBoardingHints(
+  routeResult: AvailableRoute,
+  rollCallStatus: RollCallStatus,
+  hasAbnormal: boolean,
+  stopCapacity: StopCapacity | undefined,
+  tempArrangements: TempArrangement[]
+): BoardingHint[] {
+  const hints: BoardingHint[] = [];
+  const now = new Date().toISOString();
+  const uidBase = routeResult.routeId + routeResult.scheduleId;
+  
+  if (!routeResult.isBoardable) {
+    routeResult.blockReasons.forEach((reason, i) => {
+      hints.push({
+        id: `hint_${uidBase}_${i}`,
+        studentId: "",
+        scheduleId: routeResult.scheduleId,
+        routeId: routeResult.routeId,
+        type: "error",
+        message: reason,
+        timestamp: now,
+      });
+    });
+  }
+  
+  if (rollCallStatus === "absent") {
+    hints.push({
+      id: `hint_${uidBase}_rollcall`,
+      studentId: "",
+      scheduleId: routeResult.scheduleId,
+      routeId: routeResult.routeId,
+      type: "warning",
+      message: "老师点名未到，请确认是否乘车",
+      timestamp: now,
+    });
+  }
+  
+  if (hasAbnormal) {
+    hints.push({
+      id: `hint_${uidBase}_abnormal`,
+      studentId: "",
+      scheduleId: routeResult.scheduleId,
+      routeId: routeResult.routeId,
+      type: "error",
+      message: "存在未处理的刷卡异常，请联系随车老师",
+      timestamp: now,
+    });
+  }
+  
+  if (stopCapacity && stopCapacity.currentCount >= stopCapacity.maxCapacity * 0.8) {
+    hints.push({
+      id: `hint_${uidBase}_capacity`,
+      studentId: "",
+      scheduleId: routeResult.scheduleId,
+      routeId: routeResult.routeId,
+      type: "warning",
+      message: `站点候车人数较多（${stopCapacity.currentCount}/${stopCapacity.maxCapacity}），请注意秩序`,
+      timestamp: now,
+    });
+  }
+  
+  tempArrangements.forEach((ta, i) => {
+    hints.push({
+      id: `hint_${uidBase}_temp_${i}`,
+      studentId: "",
+      scheduleId: routeResult.scheduleId,
+      routeId: routeResult.routeId,
+      type: "info",
+      message: `临时安排：${ta.title} - ${ta.description}`,
+      timestamp: now,
+    });
+  });
+  
+  return hints;
+}
+
 export function useBusDerivation(inputs: DerivationInputs) {
   const {
     student,
@@ -166,6 +397,11 @@ export function useBusDerivation(inputs: DerivationInputs) {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
     simulatedDate,
   } = inputs;
 
@@ -366,6 +602,21 @@ export function useBusDerivation(inputs: DerivationInputs) {
         isBoardable = false;
       }
 
+      const driverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
+      routeStepData["driverStatus"] = driverStatus;
+      if (driverStatus === "leave" || driverStatus === "off_duty") {
+        const ds = driverSchedules.find(
+          (d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate
+        );
+        if (ds?.replacementDriverId) {
+          const replacementDriver = drivers.find((d) => d.id === ds.replacementDriverId);
+          routeStepData["replacementDriver"] = replacementDriver?.name;
+        } else {
+          blockReasons.push(`司机${driverStatus === "leave" ? "请假" : "未到岗"}，暂无代班司机`);
+          isBoardable = false;
+        }
+      }
+
       const stopOrder = getStopOrderInRoute(route, student.stopId);
       if (stopOrder < 0) {
         blockReasons.push("线路不经过该学生的乘车站点");
@@ -392,6 +643,41 @@ export function useBusDerivation(inputs: DerivationInputs) {
         blockReasons.push("家长未授权此线路");
         isBoardable = false;
       }
+
+      const rollCallStatus = getRollCallStatus(student.id, schedule.id, student.stopId, teacherRollCalls, effectiveDate);
+      routeStepData["rollCallStatus"] = rollCallStatus;
+      if (rollCallStatus === "absent") {
+        blockReasons.push("老师点名未到，如已到校请联系老师更新状态");
+        isBoardable = false;
+      }
+
+      const abnormalSwipe = hasActiveAbnormalSwipe(student.id, schedule.id, swipeAbnormalRecords, effectiveDate);
+      if (abnormalSwipe) {
+        blockReasons.push(`刷卡异常：${abnormalSwipe.description}，请联系随车老师处理`);
+        isBoardable = false;
+      }
+
+      const stopCapacity = getStopCapacity(student.stopId, schedule.id, stopCapacities, effectiveDate);
+      routeStepData["stopCapacity"] = stopCapacity
+        ? `${stopCapacity.currentCount}/${stopCapacity.maxCapacity}`
+        : "未统计";
+      if (stopCapacity && stopCapacity.currentCount >= stopCapacity.maxCapacity) {
+        blockReasons.push(`站点候车人数已满（${stopCapacity.currentCount}/${stopCapacity.maxCapacity}），建议乘坐后续班次`);
+        isBoardable = false;
+      }
+
+      const activeTempArrangements = getActiveTempArrangements(
+        tempArrangements,
+        student.id,
+        route.id,
+        student.stopId,
+        effectiveDate
+      );
+      activeTempArrangements.forEach((ta) => {
+        if (ta.type === "capacity_increase" || ta.type === "priority_student" || ta.type === "extra_vehicle") {
+          routeStepData["tempArrangement"] = ta.title;
+        }
+      });
 
       const weatherDelay = getActiveWeatherDelay(weatherDelays, route.id);
       if (weatherDelay) {
@@ -427,6 +713,65 @@ export function useBusDerivation(inputs: DerivationInputs) {
       }
 
       const boarded = hasBoarded(student.id, schedule.id, swipeRecords);
+      const driverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
+      const finalDriverName = driverStatus === "replaced" || driverStatus === "leave"
+        ? (driverSchedules.find((d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate)?.replacementDriverId
+            ? drivers.find((d) => d.id === driverSchedules.find((ds) => ds.driverId === schedule.driverId && ds.scheduleId === schedule.id && ds.date === effectiveDate)?.replacementDriverId)?.name
+            : driver.name)
+        : driver.name;
+      
+      const invisibilityReasons: RouteInvisibilityReason[] = [];
+      if (!isBoardable) {
+        blockReasons.forEach((reason, i) => {
+          const steps = ["线路状态", "车辆状态", "司机状态", "站点匹配", "线路绕行", "年级限制", "家长授权", "老师点名", "刷卡异常", "站点容量", "车辆容量"];
+          invisibilityReasons.push(
+            createInvisibilityReason(
+              route,
+              steps[Math.min(i, steps.length - 1)],
+              reason,
+              availableRoutes.length > 0 ? `建议乘坐 ${availableRoutes[0]?.routeName}（${availableRoutes[0]?.estimatedArrival}）` : undefined,
+              { blockIndex: i, stepData: routeStepData }
+            )
+          );
+        });
+      }
+
+      const baseBoardingHints = generateBoardingHints(
+        { routeId: route.id, routeName: route.name, routeCode: route.code, colorIndex: route.colorIndex, scheduleId: schedule.id, departureTime: schedule.departureTime, estimatedArrival, originalArrival, delayMinutes, vehicleId: vehicle.id, vehiclePlate: vehicle.plateNumber, driverName: finalDriverName, availableSeats, isBoardable, blockReasons, requiresEscort: false, isTempStop: !!tempStop },
+        rollCallStatus,
+        !!abnormalSwipe,
+        stopCapacity,
+        activeTempArrangements
+      );
+      const boardingHints = [...baseBoardingHints];
+      if (student.grade <= 3 && isBoardable) {
+        boardingHints.push({
+          id: `hint_lower_grade_${route.id}_${schedule.id}`,
+          studentId: student.id,
+          scheduleId: schedule.id,
+          routeId: route.id,
+          type: "warning",
+          message: `${student.grade}年级低年级同学请注意：请在老师或家长陪同下乘车，下车前请确认有人接送`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      if (requiresEscort) {
+        boardingHints.push({
+          id: `hint_escort_${route.id}_${schedule.id}`,
+          studentId: student.id,
+          scheduleId: schedule.id,
+          routeId: route.id,
+          type: "info",
+          message: "该站点需要老师护送下车，请在座位上等候老师提醒",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const transferHint = !isBoardable && blockReasons.some((b) => b.includes("绕行") || b.includes("封闭"))
+        ? availableRoutes.length > 0
+          ? `建议换乘 ${availableRoutes[0]?.routeName}（${availableRoutes[0]?.estimatedArrival}）`
+          : undefined
+        : undefined;
 
       const routeResult: AvailableRoute = {
         routeId: route.id,
@@ -440,13 +785,23 @@ export function useBusDerivation(inputs: DerivationInputs) {
         delayMinutes,
         vehicleId: vehicle.id,
         vehiclePlate: vehicle.plateNumber,
-        driverName: driver.name,
+        driverName: finalDriverName,
+        driverStatus,
         availableSeats: Math.max(0, availableSeats),
         isBoardable,
         boarded,
         blockReasons,
         requiresEscort,
         isTempStop: !!tempStop,
+        stopCurrentCount: stopCapacity?.currentCount,
+        stopMaxCapacity: stopCapacity?.maxCapacity,
+        rollCallStatus,
+        hasAbnormalSwipe: !!abnormalSwipe,
+        abnormalReason: abnormalSwipe?.description,
+        tempArrangement: activeTempArrangements.find((ta) => ta.studentIds?.includes(student.id)),
+        transferHint,
+        boardingHints,
+        invisibilityReasons: invisibilityReasons.length > 0 ? invisibilityReasons : undefined,
       };
 
       if (isBoardable) {
@@ -481,6 +836,18 @@ export function useBusDerivation(inputs: DerivationInputs) {
 
     steps.push({
       id: uid("step_"),
+      name: "乘车核验检查",
+      description: "检查老师点名、刷卡异常、站点容量等核验信息",
+      passed: true,
+      data: {
+        activeAbnormalRecords: swipeAbnormalRecords.filter((a) => !a.handled && a.swipeTime.startsWith(effectiveDate)).length,
+        rollCallDoneCount: teacherRollCalls.filter((r) => r.date === effectiveDate).length,
+        tempArrangementsActive: tempArrangements.filter((t) => t.isActive && isDateInRange(effectiveDate, t.startDate, t.endDate)).length,
+      },
+    });
+
+    steps.push({
+      id: uid("step_"),
       name: "可乘线路生成",
       description: "综合所有规则生成可乘线路列表",
       passed: availableRoutes.length > 0,
@@ -491,6 +858,18 @@ export function useBusDerivation(inputs: DerivationInputs) {
       },
     });
 
+    const transferHints = generateTransferHints(blockedRoutes, availableRoutes, student, stops, gradeRouteRules);
+
+    const systemState = {
+      weatherDelays: weatherDelays.filter((w) => w.isActive && isDateInRange(effectiveDate, w.effectiveDate)).length,
+      activeDetours: detours.filter((d) => d.isActive && isDateInRange(effectiveDate, d.startDate, d.endDate)).length,
+      activeOutages: outages.filter((o) => o.isActive && isDateInRange(effectiveDate, o.startDate, o.endDate)).length,
+      stopClosures: stopClosures.filter((c) => c.isActive && isDateInRange(effectiveDate, c.startDate, c.endDate)).length,
+      vehicleFaults: vehicles.filter((v) => v.status === "fault").length,
+      driverLeaves: driverSchedules.filter((d) => d.date === effectiveDate && d.status === "leave").length,
+      tempArrangements: tempArrangements.filter((t) => t.isActive && isDateInRange(effectiveDate, t.startDate, t.endDate)).length,
+    };
+
     return {
       studentId: student.id,
       studentName: student.name,
@@ -498,6 +877,8 @@ export function useBusDerivation(inputs: DerivationInputs) {
       blockedRoutes,
       steps,
       generatedAt: new Date().toISOString(),
+      systemState,
+      transferHints,
     };
   }, [
     student,
@@ -516,6 +897,11 @@ export function useBusDerivation(inputs: DerivationInputs) {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
     dayOfWeek,
   ]);
 
@@ -558,6 +944,17 @@ export function useBusDerivation(inputs: DerivationInputs) {
           hideReason = vehicle.status === "fault" ? "车辆故障" : "车辆年检过期";
         }
 
+        const driverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
+        if (driverStatus === "leave" || driverStatus === "off_duty") {
+          const ds = driverSchedules.find(
+            (d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate
+          );
+          if (!ds?.replacementDriverId) {
+            isShowing = false;
+            hideReason = `司机${driverStatus === "leave" ? "请假" : "未到岗"}`;
+          }
+        }
+
         let delayMinutes = 0;
         const weatherDelay = getActiveWeatherDelay(weatherDelays, route.id);
         if (weatherDelay) delayMinutes += weatherDelay.delayMinutes;
@@ -571,6 +968,139 @@ export function useBusDerivation(inputs: DerivationInputs) {
         const estimatedArrival = addMinutes(schedule.departureTime, baseMinutes + delayMinutes);
 
         const availableSeats = vehicle.capacity - vehicle.currentLoad;
+
+        const stopCapacity = getStopCapacity(stop.id, schedule.id, stopCapacities, effectiveDate);
+        const stopRollCalls = teacherRollCalls.filter(
+          (r) => r.stopId === stop.id && r.scheduleId === schedule.id && r.date === effectiveDate
+        );
+        const rollCallPresent = stopRollCalls.filter((r) => r.status === "present").length;
+        const rollCallAbsent = stopRollCalls.filter((r) => r.status === "absent").length;
+
+        let transferHint: string | undefined;
+        if (isClosed && stopClosure?.alternativeStopId) {
+          const altStop = stops.find((s) => s.id === stopClosure.alternativeStopId);
+          transferHint = `站点封闭，请前往 ${altStop?.name || "替代站点"} 乘车`;
+        } else if (activeDetour) {
+          const altStops = activeDetour.alternativeStopIds
+            .map((id) => stops.find((s) => s.id === id)?.name)
+            .filter(Boolean)
+            .join("、");
+          if (altStops) {
+            transferHint = `线路绕行，改经 ${altStops}`;
+          }
+        }
+
+        const boardingHints: BoardingHint[] = [];
+        const nowTs = new Date().toISOString();
+
+        if (weatherDelay) {
+          boardingHints.push({
+            id: `hint_weather_${stop.id}_${schedule.id}`,
+            studentId: "",
+            scheduleId: schedule.id,
+            routeId: route.id,
+            type: "info",
+            message: `${weatherDelay.weatherType === "rain" ? "降雨" : weatherDelay.weatherType === "snow" ? "降雪" : weatherDelay.weatherType === "fog" ? "大雾" : weatherDelay.weatherType === "storm" ? "暴雨" : "高温"}影响，预计延误${weatherDelay.delayMinutes}分钟`,
+            timestamp: nowTs,
+          });
+        }
+
+        if (activeDetour) {
+          boardingHints.push({
+            id: `hint_detour_${stop.id}_${schedule.id}`,
+            studentId: "",
+            scheduleId: schedule.id,
+            routeId: route.id,
+            type: "warning",
+            message: `线路绕行：${activeDetour.reason}，增加行程${activeDetour.addedMinutes}分钟`,
+            timestamp: nowTs,
+          });
+        }
+
+        if (stopCapacity) {
+          if (stopCapacity.currentCount >= stopCapacity.maxCapacity) {
+            boardingHints.push({
+              id: `hint_cap_full_${stop.id}_${schedule.id}`,
+              studentId: "",
+              scheduleId: schedule.id,
+              routeId: route.id,
+              type: "error",
+              message: `站点已满员（${stopCapacity.currentCount}/${stopCapacity.maxCapacity}），建议后续班次`,
+              timestamp: nowTs,
+            });
+          } else if (stopCapacity.currentCount >= stopCapacity.maxCapacity * 0.8) {
+            boardingHints.push({
+              id: `hint_cap_warn_${stop.id}_${schedule.id}`,
+              studentId: "",
+              scheduleId: schedule.id,
+              routeId: route.id,
+              type: "warning",
+              message: `站点候车人数较多（${stopCapacity.currentCount}/${stopCapacity.maxCapacity}），请有序候车`,
+              timestamp: nowTs,
+            });
+          }
+        }
+
+        if (rollCallAbsent > 0) {
+          boardingHints.push({
+            id: `hint_rollcall_${stop.id}_${schedule.id}`,
+            studentId: "",
+            scheduleId: schedule.id,
+            routeId: route.id,
+            type: "warning",
+            message: `点名情况：已到${rollCallPresent}人，未到${rollCallAbsent}人，未到同学请联系老师`,
+            timestamp: nowTs,
+          });
+        }
+
+        if (driverStatus === "replaced") {
+          const ds = driverSchedules.find(
+            (d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate
+          );
+          boardingHints.push({
+            id: `hint_driver_${stop.id}_${schedule.id}`,
+            studentId: "",
+            scheduleId: schedule.id,
+            routeId: route.id,
+            type: "warning",
+            message: `司机代班：${ds?.notes || "原司机请假，已安排代班"}`,
+            timestamp: nowTs,
+          });
+        }
+
+        if (vehicle.status === "replacement") {
+          boardingHints.push({
+            id: `hint_vehicle_${stop.id}_${schedule.id}`,
+            studentId: "",
+            scheduleId: schedule.id,
+            routeId: route.id,
+            type: "warning",
+            message: `替换车辆：原车辆故障，已启用备用车辆`,
+            timestamp: nowTs,
+          });
+        }
+
+        if (availableSeats === 0) {
+          boardingHints.push({
+            id: `hint_seats_${stop.id}_${schedule.id}`,
+            studentId: "",
+            scheduleId: schedule.id,
+            routeId: route.id,
+            type: "warning",
+            message: `车辆已满员，无空余座位`,
+            timestamp: nowTs,
+          });
+        } else if (availableSeats <= 5) {
+          boardingHints.push({
+            id: `hint_seats_few_${stop.id}_${schedule.id}`,
+            studentId: "",
+            scheduleId: schedule.id,
+            routeId: route.id,
+            type: "warning",
+            message: `仅剩${availableSeats}个座位，请尽快上车`,
+            timestamp: nowTs,
+          });
+        }
 
         results.push({
           stopId: stop.id,
@@ -589,6 +1119,13 @@ export function useBusDerivation(inputs: DerivationInputs) {
           hideReason,
           isClosed,
           closureHint: stopClosure?.reason,
+          driverStatus,
+          stopCurrentCount: stopCapacity?.currentCount,
+          stopMaxCapacity: stopCapacity?.maxCapacity,
+          rollCallPresent,
+          rollCallAbsent,
+          transferHint,
+          boardingHints: boardingHints.length > 0 ? boardingHints : undefined,
         });
       }
     }
@@ -614,6 +1151,9 @@ export function useBusDerivation(inputs: DerivationInputs) {
     stopClosures,
     weatherDelays,
     tempStopRules,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
     dayOfWeek,
   ]);
 

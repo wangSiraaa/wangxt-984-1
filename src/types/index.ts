@@ -224,14 +224,6 @@ export interface HistoryRecord {
   operator: string;
 }
 
-export interface DriverSchedule {
-  id: string;
-  driverId: string;
-  scheduleId: string;
-  date: string;
-  status: "scheduled" | "completed" | "cancelled";
-}
-
 export interface RuleStep {
   id: string;
   name: string;
@@ -254,6 +246,7 @@ export interface AvailableRoute {
   vehicleId: string;
   vehiclePlate: string;
   driverName: string;
+  driverStatus?: DriverScheduleStatus;
   availableSeats: number;
   isBoardable: boolean;
   boarded?: boolean;
@@ -261,6 +254,14 @@ export interface AvailableRoute {
   requiresEscort: boolean;
   isTempStop: boolean;
   transferHint?: string;
+  stopCurrentCount?: number;
+  stopMaxCapacity?: number;
+  rollCallStatus?: RollCallStatus;
+  hasAbnormalSwipe?: boolean;
+  abnormalReason?: string;
+  tempArrangement?: TempArrangement;
+  boardingHints?: BoardingHint[];
+  invisibilityReasons?: RouteInvisibilityReason[];
 }
 
 export interface DerivationResult {
@@ -270,6 +271,131 @@ export interface DerivationResult {
   blockedRoutes: AvailableRoute[];
   steps: RuleStep[];
   generatedAt: string;
+  systemState: {
+    weatherDelays: number;
+    activeDetours: number;
+    activeOutages: number;
+    stopClosures: number;
+    vehicleFaults: number;
+    driverLeaves: number;
+    tempArrangements: number;
+  };
+  transferHints: string[];
+}
+
+export type RollCallStatus = "present" | "absent" | "leave" | "unknown";
+
+export type DriverScheduleStatus = "scheduled" | "on_duty" | "off_duty" | "leave" | "replaced";
+
+export type SwipeAbnormalType =
+  | "no_card"
+  | "card_expired"
+  | "wrong_route"
+  | "too_early"
+  | "too_late"
+  | "already_boarded"
+  | "capacity_full"
+  | "stop_closed";
+
+export type TempArrangementType =
+  | "extra_vehicle"
+  | "temporary_route"
+  | "special_dismissal"
+  | "capacity_increase"
+  | "priority_student";
+
+export interface TeacherRollCall {
+  id: string;
+  teacherId: string;
+  scheduleId: string;
+  stopId: string;
+  date: string;
+  studentId: string;
+  status: RollCallStatus;
+  notes?: string;
+  recordedAt: string;
+}
+
+export interface StopCapacity {
+  id: string;
+  stopId: string;
+  scheduleId: string;
+  date: string;
+  currentCount: number;
+  maxCapacity: number;
+  lastUpdated: string;
+}
+
+export interface DriverSchedule {
+  id: string;
+  driverId: string;
+  scheduleId: string;
+  date: string;
+  status: DriverScheduleStatus;
+  replacementDriverId?: string;
+  notes?: string;
+  updatedAt: string;
+}
+
+export interface TempArrangement {
+  id: string;
+  type: TempArrangementType;
+  title: string;
+  description: string;
+  routeId?: string;
+  stopId?: string;
+  scheduleId?: string;
+  studentIds?: string[];
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface SwipeAbnormalRecord {
+  id: string;
+  studentId: string;
+  scheduleId: string;
+  stopId: string;
+  vehicleId: string;
+  swipeTime: string;
+  abnormalType: SwipeAbnormalType;
+  description: string;
+  handled: boolean;
+  handledBy?: string;
+  handledAt?: string;
+}
+
+export interface BoardingHint {
+  id: string;
+  studentId: string;
+  scheduleId: string;
+  routeId: string;
+  type: "info" | "warning" | "error" | "success";
+  message: string;
+  details?: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface RouteInvisibilityReason {
+  routeId: string;
+  routeName: string;
+  routeCode: string;
+  blockReason: string;
+  blockStep: string;
+  blockData?: Record<string, unknown>;
+  suggestion?: string;
+}
+
+export interface HistoryDerivationSnapshot {
+  id: string;
+  studentId: string;
+  timestamp: string;
+  availableRoutes: string[];
+  blockedRoutes: RouteInvisibilityReason[];
+  derivationSteps: RuleStep[];
+  systemState: Record<string, unknown>;
 }
 
 export interface StopArrival {
@@ -290,4 +416,11 @@ export interface StopArrival {
   isClosed: boolean;
   closureHint?: string;
   isTempStop?: boolean;
+  driverStatus?: DriverScheduleStatus;
+  stopCurrentCount?: number;
+  stopMaxCapacity?: number;
+  rollCallPresent?: number;
+  rollCallAbsent?: number;
+  transferHint?: string;
+  boardingHints?: BoardingHint[];
 }

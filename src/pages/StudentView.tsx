@@ -13,6 +13,11 @@ import {
   Calendar,
   Umbrella,
   Users,
+  UserCheck,
+  ShieldAlert,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useBusStore } from "@/stores/busStore";
 import { useBusDerivation } from "@/hooks/useBusDerivation";
@@ -23,9 +28,11 @@ import {
   statusLabel,
   daysUntil,
 } from "@/lib/utils";
+import type { RouteInvisibilityReason, SwipeAbnormalType } from "@/types";
 
 export default function StudentView() {
   const [showCard, setShowCard] = useState(false);
+  const [expandedBlockedRoute, setExpandedBlockedRoute] = useState<string | null>(null);
   const {
     routes,
     stops,
@@ -43,16 +50,25 @@ export default function StudentView() {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
+    derivationSnapshots,
     currentStudentId,
     setCurrentStudentId,
     addSwipeRecord,
     updateVehicleLoad,
     addHistory,
+    addDerivationSnapshot,
+    handleSwipeAbnormal,
     simulatedDate,
   } = useBusStore();
 
   const currentStudent = students.find((s) => s.id === currentStudentId);
   const studentStop = stops.find((s) => s.id === currentStudent?.stopId);
+  const effectiveDate = simulatedDate || new Date().toISOString().split("T")[0];
 
   const { derivationResult, stopArrivals } = useBusDerivation({
     student: currentStudent,
@@ -71,8 +87,17 @@ export default function StudentView() {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
     simulatedDate,
   });
+
+  const studentAbnormalRecords = swipeAbnormalRecords.filter(
+    (r) => r.studentId === currentStudentId && !r.handled
+  );
 
   const gradeRule = gradeRouteRules.find((r) => r.grade === currentStudent?.grade);
   const escortRule = escortRules.find((r) => r.grade === currentStudent?.grade);
@@ -83,9 +108,107 @@ export default function StudentView() {
   const activeWeather = weatherDelays.find((w) => w.isActive);
   const stopClosure = stopClosures.find((c) => c.stopId === currentStudent?.stopId && c.isActive);
 
+  const getAbnormalTypeLabel = (type: SwipeAbnormalType): string => {
+    const labels: Record<SwipeAbnormalType, string> = {
+      no_card: "未带卡",
+      card_expired: "卡已过期",
+      wrong_route: "线路错误",
+      too_early: "刷卡过早",
+      too_late: "刷卡过晚",
+      already_boarded: "已刷卡乘车",
+      capacity_full: "车辆满员",
+      stop_closed: "站点已封闭",
+    };
+    return labels[type] || type;
+  };
+
   const handleSwipe = (route: typeof derivationResult extends null ? never : NonNullable<typeof derivationResult>["availableRoutes"][0]) => {
     if (!currentStudent) return;
-    addSwipeRecord({
+
+    if (route.rollCallStatus === "absent") {
+      const abnormalType: SwipeAbnormalType = "wrong_route";
+      addSwipeRecord?.({
+        studentId: currentStudent.id,
+        scheduleId: route.scheduleId,
+        stopId: currentStudent.stopId,
+        swipeTime: new Date().toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }),
+        type: "board",
+        vehicleId: route.vehicleId,
+      });
+      addHistory?.({
+        type: "swipe_abnormal",
+        entityType: "SwipeAbnormalRecord",
+        entityId: currentStudent.id,
+        action: "swipe_abnormal",
+        data: {
+          studentName: currentStudent.name,
+          route: route.routeName,
+          reason: "老师点名未到，禁止乘车",
+        },
+        operator: "车载刷卡机",
+      });
+      alert("刷卡失败：老师点名未到，禁止乘车。请联系老师确认。");
+      return;
+    }
+
+    if (route.hasAbnormalSwipe) {
+      alert(`刷卡失败：${route.abnormalReason || "存在未处理的刷卡异常"}。请先联系管理员处理。`);
+      return;
+    }
+
+    if (route.stopCurrentCount !== undefined && route.stopMaxCapacity !== undefined && route.stopCurrentCount >= route.stopMaxCapacity) {
+      const abnormalType: SwipeAbnormalType = "capacity_full";
+      addSwipeRecord?.({
+        studentId: currentStudent.id,
+        scheduleId: route.scheduleId,
+        stopId: currentStudent.stopId,
+        swipeTime: new Date().toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }),
+        type: "board",
+        vehicleId: route.vehicleId,
+      });
+      addHistory?.({
+        type: "swipe_abnormal",
+        entityType: "SwipeAbnormalRecord",
+        entityId: currentStudent.id,
+        action: "swipe_abnormal",
+        data: {
+          studentName: currentStudent.name,
+          route: route.routeName,
+          reason: "站点候车人数已满",
+        },
+        operator: "车载刷卡机",
+      });
+      alert("刷卡失败：站点候车人数已满，请等候下一班车。");
+      return;
+    }
+
+    if (route.availableSeats === 0) {
+      const abnormalType: SwipeAbnormalType = "capacity_full";
+      addSwipeRecord?.({
+        studentId: currentStudent.id,
+        scheduleId: route.scheduleId,
+        stopId: currentStudent.stopId,
+        swipeTime: new Date().toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }),
+        type: "board",
+        vehicleId: route.vehicleId,
+      });
+      alert("刷卡失败：车辆已满员，请等候下一班车。");
+      return;
+    }
+
+    addSwipeRecord?.({
       studentId: currentStudent.id,
       scheduleId: route.scheduleId,
       stopId: currentStudent.stopId,
@@ -97,8 +220,8 @@ export default function StudentView() {
       type: "board",
       vehicleId: route.vehicleId,
     });
-    updateVehicleLoad(route.vehicleId, 1);
-    addHistory({
+    updateVehicleLoad?.(route.vehicleId, 1);
+    addHistory?.({
       type: "swipe",
       entityType: "SwipeRecord",
       entityId: currentStudent.id,
@@ -110,6 +233,25 @@ export default function StudentView() {
       },
       operator: "车载刷卡机",
     });
+
+    if (addDerivationSnapshot && currentStudent) {
+      addDerivationSnapshot({
+        studentId: currentStudent.id,
+        timestamp: new Date().toISOString(),
+        availableRoutes: derivationResult.availableRoutes.map((r) => ({
+          routeId: r.routeId,
+          routeName: r.routeName,
+          routeCode: r.routeCode,
+        })),
+        blockedRoutes: derivationResult.blockedRoutes.map((r) => ({
+          routeId: r.routeId,
+          routeName: r.routeName,
+          routeCode: r.routeCode,
+        })),
+        derivationSteps: derivationResult.derivationSteps,
+        systemState: derivationResult.systemState,
+      });
+    }
   };
 
   if (!currentStudent || !derivationResult) {
@@ -254,7 +396,7 @@ export default function StudentView() {
         </div>
       </div>
 
-      {(activeWeather || stopClosure || activeLeave) && (
+      {(activeWeather || stopClosure || activeLeave || studentAbnormalRecords.length > 0 || derivationResult.transferHints.length > 0) && (
         <div className="space-y-3">
           {activeLeave && (
             <div className="flex items-center gap-3 p-4 rounded-2xl bg-crimson-50 dark:bg-crimson-950/30 border border-crimson-200 dark:border-crimson-800">
@@ -264,6 +406,44 @@ export default function StudentView() {
                 <div className="text-sm text-crimson-600 dark:text-crimson-400">
                   {activeLeave.reason}（{activeLeave.startDate} 至 {activeLeave.endDate}）
                 </div>
+              </div>
+            </div>
+          )}
+          {studentAbnormalRecords.length > 0 && (
+            <div className="p-4 rounded-2xl bg-crimson-50 dark:bg-crimson-950/30 border border-crimson-200 dark:border-crimson-800">
+              <div className="flex items-center gap-3 mb-2">
+                <ShieldAlert size={20} className="text-crimson-500" />
+                <div className="font-medium text-crimson-700 dark:text-crimson-300">存在未处理的刷卡异常</div>
+              </div>
+              <div className="space-y-2 ml-8">
+                {studentAbnormalRecords.map((record) => (
+                  <div key={record.id} className="flex items-center justify-between text-sm">
+                    <span className="text-crimson-600 dark:text-crimson-400">
+                      {getAbnormalTypeLabel(record.abnormalType)}：{record.description}
+                    </span>
+                    <button
+                      onClick={() => handleSwipeAbnormal?.(record.id, "学生本人")}
+                      className="px-3 py-1 text-xs rounded-lg bg-crimson-100 text-crimson-700 hover:bg-crimson-200 dark:bg-crimson-900/50 dark:text-crimson-300 dark:hover:bg-crimson-900/70 transition-colors"
+                    >
+                      确认处理
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {derivationResult.transferHints.length > 0 && (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+              <div className="flex items-center gap-3 mb-2">
+                <ArrowRight size={20} className="text-amber-500" />
+                <div className="font-medium text-amber-700 dark:text-amber-300">换乘提示</div>
+              </div>
+              <div className="space-y-1 ml-8">
+                {derivationResult.transferHints.map((hint, idx) => (
+                  <div key={idx} className="text-sm text-amber-600 dark:text-amber-400">
+                    {hint}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -330,7 +510,7 @@ export default function StudentView() {
                           {route.routeCode}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-lg">{route.routeName}</span>
                             {route.isTempStop && (
                               <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
@@ -347,9 +527,43 @@ export default function StudentView() {
                                 已刷卡
                               </span>
                             )}
+                            {route.rollCallStatus && route.rollCallStatus !== "unknown" && (
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded ${
+                                  route.rollCallStatus === "present"
+                                    ? "bg-jade-100 text-jade-700 dark:bg-jade-900/50 dark:text-jade-300"
+                                    : route.rollCallStatus === "absent"
+                                    ? "bg-crimson-100 text-crimson-700 dark:bg-crimson-900/50 dark:text-crimson-300"
+                                    : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+                                }`}
+                              >
+                                {route.rollCallStatus === "present" ? "已点名" : route.rollCallStatus === "absent" ? "未到" : "请假"}
+                              </span>
+                            )}
+                            {route.driverStatus && route.driverStatus !== "scheduled" && route.driverStatus !== "on_duty" && (
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded ${
+                                  route.driverStatus === "replaced"
+                                    ? "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+                                    : "bg-crimson-100 text-crimson-700 dark:bg-crimson-900/50 dark:text-crimson-300"
+                                }`}
+                              >
+                                {route.driverStatus === "replaced" ? "代班司机" : route.driverStatus === "leave" ? "司机请假" : "司机离岗"}
+                              </span>
+                            )}
+                            {route.hasAbnormalSwipe && (
+                              <span className="px-2 py-0.5 text-xs rounded bg-crimson-100 text-crimson-700 dark:bg-crimson-900/50 dark:text-crimson-300">
+                                刷卡异常
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-ink-500 mt-0.5">
                             {route.vehiclePlate} · {route.driverName} 驾驶
+                            {route.stopCurrentCount !== undefined && route.stopMaxCapacity !== undefined && (
+                              <span className="ml-3">
+                                站点候车 {route.stopCurrentCount}/{route.stopMaxCapacity} 人
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -390,7 +604,7 @@ export default function StudentView() {
                               <CheckCircle2 size={16} />
                               已乘车
                             </button>
-                          ) : route.availableSeats > 0 ? (
+                          ) : route.availableSeats > 0 && route.rollCallStatus !== "absent" && !route.hasAbnormalSwipe ? (
                             <button
                               onClick={() => handleSwipe(route)}
                               className="btn-primary"
@@ -400,13 +614,55 @@ export default function StudentView() {
                             </button>
                           ) : (
                             <button disabled className="btn-secondary opacity-50 cursor-not-allowed">
-                              <Users size={16} />
-                              已满员
+                              {route.rollCallStatus === "absent" ? (
+                                <>
+                                  <UserCheck size={16} />
+                                  未点名
+                                </>
+                              ) : route.hasAbnormalSwipe ? (
+                                <>
+                                  <ShieldAlert size={16} />
+                                  异常
+                                </>
+                              ) : (
+                                <>
+                                  <Users size={16} />
+                                  已满员
+                                </>
+                              )}
                             </button>
                           )}
                         </div>
                       </div>
                     </div>
+                    {route.boardingHints && route.boardingHints.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-ink-100 dark:border-navy-700 space-y-2">
+                        {route.boardingHints.map((hint) => (
+                          <div
+                            key={hint.id}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                              hint.type === "error"
+                                ? "bg-crimson-50 dark:bg-crimson-950/30 text-crimson-700 dark:text-crimson-300"
+                                : hint.type === "warning"
+                                ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+                                : "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
+                            }`}
+                          >
+                            {hint.type === "error" ? (
+                              <XCircle size={16} />
+                            ) : hint.type === "warning" ? (
+                              <AlertTriangle size={16} />
+                            ) : (
+                              <Info size={16} />
+                            )}
+                            {hint.message}
+                            {hint.details && (
+                              <span className="opacity-75 ml-1">({hint.details})</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -420,32 +676,98 @@ export default function StudentView() {
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <XCircle size={18} className="text-crimson-500" />
             不可乘线路
+            <span className="text-sm font-normal text-ink-500 ml-2">
+              （点击展开查看详细原因）
+            </span>
           </h2>
           <div className="space-y-3">
-            {derivationResult.blockedRoutes.slice(0, 5).map((route) => (
-              <div
-                key={route.scheduleId}
-                className="flex items-center justify-between p-4 rounded-xl bg-ink-50 dark:bg-navy-900/30 border border-ink-200 dark:border-navy-700 opacity-70"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`px-3 py-1 rounded-lg text-sm font-medium ${routeColorClass(route.colorIndex)}`}>
-                    {route.routeCode}
+            {derivationResult.blockedRoutes.map((route) => {
+              const isExpanded = expandedBlockedRoute === route.scheduleId;
+              const invisibilityReasons = (route as any).invisibilityReasons as RouteInvisibilityReason[] | undefined;
+              return (
+                <div
+                  key={route.scheduleId}
+                  className="rounded-xl bg-ink-50 dark:bg-navy-900/30 border border-ink-200 dark:border-navy-700 overflow-hidden"
+                >
+                  <div
+                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-ink-100 dark:hover:bg-navy-900/50 transition-colors"
+                    onClick={() => setExpandedBlockedRoute(isExpanded ? null : route.scheduleId)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`px-3 py-1 rounded-lg text-sm font-medium ${routeColorClass(route.colorIndex)}`}>
+                        {route.routeCode}
+                      </div>
+                      <span className="font-medium">{route.routeName}</span>
+                      <span className="font-mono text-ink-500">{route.departureTime}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {route.blockReasons.slice(0, 2).map((reason, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-1 text-xs rounded-full bg-crimson-100 text-crimson-700 dark:bg-crimson-950/50 dark:text-crimson-300"
+                        >
+                          {reason}
+                        </span>
+                      ))}
+                      {isExpanded ? (
+                        <ChevronUp size={18} className="text-ink-400" />
+                      ) : (
+                        <ChevronDown size={18} className="text-ink-400" />
+                      )}
+                    </div>
                   </div>
-                  <span className="font-medium">{route.routeName}</span>
-                  <span className="font-mono text-ink-500">{route.departureTime}</span>
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t border-ink-100 dark:border-navy-700">
+                      <div className="pt-4 space-y-3">
+                        {invisibilityReasons && invisibilityReasons.length > 0 ? (
+                          <>
+                            <div className="text-sm font-medium text-ink-600 dark:text-ink-300 mb-2">
+                              为什么看不到这条线路？
+                            </div>
+                            {invisibilityReasons.map((reason, idx) => (
+                              <div
+                                key={idx}
+                                className="p-3 rounded-lg bg-white dark:bg-navy-800 border border-ink-100 dark:border-navy-700"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-crimson-100 dark:bg-crimson-900/50 flex items-center justify-center text-xs font-bold text-crimson-600 dark:text-crimson-300">
+                                    {reason.blockStep}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="font-medium text-ink-700 dark:text-ink-200">
+                                      {reason.blockReason}
+                                    </div>
+                                    {reason.blockData && (
+                                      <div className="mt-1 text-sm text-ink-500 dark:text-ink-400 font-mono text-xs bg-ink-50 dark:bg-navy-900/50 p-2 rounded">
+                                        {JSON.stringify(reason.blockData, null, 2)}
+                                      </div>
+                                    )}
+                                    {reason.suggestion && (
+                                      <div className="mt-2 text-sm text-jade-600 dark:text-jade-400 flex items-center gap-1">
+                                        <CheckCircle2 size={14} />
+                                        建议：{reason.suggestion}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        ) : (
+                          <div className="text-sm text-ink-500 dark:text-ink-400">
+                            阻塞原因：{route.blockReasons.join("、")}
+                          </div>
+                        )}
+                        <div className="pt-2 text-xs text-ink-400 flex items-center gap-1">
+                          <Info size={12} />
+                          线路可见性由资格、年级、站点、车辆、司机排班、老师规则和临时安排实时推导
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  {route.blockReasons.slice(0, 2).map((reason, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-1 text-xs rounded-full bg-crimson-100 text-crimson-700 dark:bg-crimson-950/50 dark:text-crimson-300"
-                    >
-                      {reason}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

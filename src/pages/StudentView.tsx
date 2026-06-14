@@ -242,13 +242,15 @@ export default function StudentView() {
           routeId: r.routeId,
           routeName: r.routeName,
           routeCode: r.routeCode,
+          estimatedArrival: r.estimatedArrival,
         })),
         blockedRoutes: derivationResult.blockedRoutes.map((r) => ({
           routeId: r.routeId,
           routeName: r.routeName,
           routeCode: r.routeCode,
+          blockReason: r.blockReasons[0] || "不可乘坐",
         })),
-        derivationSteps: derivationResult.derivationSteps,
+        steps: derivationResult.steps,
         systemState: derivationResult.systemState,
       });
     }

@@ -81,7 +81,7 @@ export default function DriverVehicleDashboard() {
         </div>
         <div className="flex items-center gap-3 text-sm text-ink-500">
           <Clock size={16} />
-          <span>{today.toLocaleDateString("zh-CN", { weekday: "long" })}</span>
+          <span>{new Date(simulatedDate).toLocaleDateString("zh-CN", { weekday: "long" })}</span>
         </div>
       </div>
 

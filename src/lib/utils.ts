@@ -159,3 +159,82 @@ export function weatherLabel(type: string): { icon: string; label: string } {
       return { icon: "cloud", label: "天气" };
   }
 }
+
+export interface WeekendValidationResult {
+  date: string;
+  dayOfWeek: number;
+  weekdayName: string;
+  isWeekend: boolean;
+  totalSchedules: number;
+  weekendSchedules: number;
+  hasNonEmptyResult: boolean;
+  details: string[];
+}
+
+export function getNextWeekendDates(baseDate: string = todayStr()): string[] {
+  const dates: string[] = [];
+  const d = new Date(baseDate);
+  let found = 0;
+  while (found < 2) {
+    d.setDate(d.getDate() + 1);
+    const day = d.getDay();
+    if (day === 6 || day === 0) {
+      dates.push(formatDate(d));
+      found++;
+    }
+  }
+  return dates;
+}
+
+export function getTestWeekendDates(): string[] {
+  const today = todayStr();
+  const results: string[] = [];
+  
+  const nextWeekends = getNextWeekendDates(today);
+  results.push(...nextWeekends);
+  
+  const d = new Date(today);
+  d.setDate(d.getDate() - 7);
+  const lastWeekend = getNextWeekendDates(formatDate(d));
+  results.push(...lastWeekend);
+  
+  return [...new Set(results)];
+}
+
+export interface WeekendScheduleValidationResult {
+  totalWeekendSchedules: number;
+  weekendScheduleIds: string[];
+  routesWithWeekendService: string[];
+  vehiclesUsedOnWeekend: string[];
+  hasWeekendService: boolean;
+  validationMessage: string;
+}
+
+export function validateWeekendSchedules(schedules: Array<{ id: string; routeId: string; vehicleId: string; dayOfWeek: number[]; isActive: boolean }>): WeekendScheduleValidationResult {
+  const activeSchedules = schedules.filter((s) => s.isActive);
+  const weekendSchedules = activeSchedules.filter((s) => s.dayOfWeek.includes(6) && s.dayOfWeek.includes(0));
+  const saturdaySchedules = activeSchedules.filter((s) => s.dayOfWeek.includes(6));
+  const sundaySchedules = activeSchedules.filter((s) => s.dayOfWeek.includes(0));
+  
+  const routesWithWeekend = [...new Set(weekendSchedules.map((s) => s.routeId))];
+  const vehiclesOnWeekend = [...new Set(weekendSchedules.map((s) => s.vehicleId))];
+  
+  const hasService = weekendSchedules.length > 0 || (saturdaySchedules.length > 0 && sundaySchedules.length > 0);
+  const message = hasService
+    ? `验证通过：共有 ${weekendSchedules.length} 个全周末班次，覆盖 ${routesWithWeekend.length} 条线路、${vehiclesOnWeekend.length} 辆车。周六班次 ${saturdaySchedules.length} 个，周日班次 ${sundaySchedules.length} 个。`
+    : "验证失败：没有找到周末班次！";
+  
+  return {
+    totalWeekendSchedules: weekendSchedules.length,
+    weekendScheduleIds: weekendSchedules.map((s) => s.id),
+    routesWithWeekendService: routesWithWeekend,
+    vehiclesUsedOnWeekend: vehiclesOnWeekend,
+    hasWeekendService: hasService,
+    validationMessage: message,
+  };
+}
+
+export function getWeekdayName(dayOfWeek: number): string {
+  const names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  return names[dayOfWeek] || "未知";
+}

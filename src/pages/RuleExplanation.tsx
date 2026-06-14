@@ -42,6 +42,11 @@ export default function RuleExplanation() {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
     simulatedDate,
   } = useBusStore();
   const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id || "");
@@ -64,6 +69,11 @@ export default function RuleExplanation() {
     parentAuths,
     leaveRecords,
     swipeRecords,
+    teacherRollCalls,
+    stopCapacities,
+    driverSchedules,
+    tempArrangements,
+    swipeAbnormalRecords,
     simulatedDate,
   });
 

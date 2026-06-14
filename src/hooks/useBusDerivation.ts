@@ -411,6 +411,16 @@ export function useBusDerivation(inputs: DerivationInputs) {
   const derivationResult = useMemo<DerivationResult | null>(() => {
     if (!student) return null;
 
+    const systemState = {
+      weatherDelays: weatherDelays.filter((w) => w.isActive && isDateInRange(effectiveDate, w.effectiveDate)).length,
+      activeDetours: detours.filter((d) => d.isActive && isDateInRange(effectiveDate, d.startDate, d.endDate)).length,
+      activeOutages: outages.filter((o) => o.isActive && isDateInRange(effectiveDate, o.startDate, o.endDate)).length,
+      stopClosures: stopClosures.filter((c) => c.isActive && isDateInRange(effectiveDate, c.startDate, c.endDate)).length,
+      vehicleFaults: vehicles.filter((v) => v.status === "fault").length,
+      driverLeaves: driverSchedules.filter((d) => d.date === effectiveDate && d.status === "leave").length,
+      tempArrangements: tempArrangements.filter((t) => t.isActive && isDateInRange(effectiveDate, t.startDate, t.endDate)).length,
+    };
+
     const steps: RuleStep[] = [];
     const availableRoutes: AvailableRoute[] = [];
     const blockedRoutes: AvailableRoute[] = [];
@@ -428,7 +438,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
       },
     });
 
-    const activeLeave = getActiveLeave(student.id, leaveRecords);
+    const activeLeave = getActiveLeave(student.id, leaveRecords, effectiveDate);
     if (activeLeave) {
       steps.push({
         id: uid("step_"),
@@ -445,6 +455,8 @@ export function useBusDerivation(inputs: DerivationInputs) {
         blockedRoutes: [],
         steps,
         generatedAt: new Date().toISOString(),
+        systemState,
+        transferHints: [],
       };
     }
     steps.push({
@@ -470,10 +482,12 @@ export function useBusDerivation(inputs: DerivationInputs) {
         blockedRoutes: [],
         steps,
         generatedAt: new Date().toISOString(),
+        systemState,
+        transferHints: [],
       };
     }
 
-    const parentAuth = getParentAuth(student.id, parentAuths);
+    const parentAuth = getParentAuth(student.id, parentAuths, effectiveDate);
     if (!parentAuth) {
       steps.push({
         id: uid("step_"),
@@ -489,6 +503,8 @@ export function useBusDerivation(inputs: DerivationInputs) {
         blockedRoutes: [],
         steps,
         generatedAt: new Date().toISOString(),
+        systemState,
+        transferHints: [],
       };
     }
     steps.push({
@@ -503,7 +519,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
       },
     });
 
-    const stopClosure = getActiveStopClosure(student.stopId, stopClosures);
+    const stopClosure = getActiveStopClosure(student.stopId, stopClosures, effectiveDate);
     const studentStop = stops.find((s) => s.id === student.stopId);
 
     if (stopClosure || studentStop?.isClosed) {
@@ -582,9 +598,9 @@ export function useBusDerivation(inputs: DerivationInputs) {
         isBoardable = false;
       }
 
-      const routeOutage = getActiveOutage({ routeId: route.id }, outages);
-      const vehicleOutage = getActiveOutage({ vehicleId: vehicle.id }, outages);
-      const scheduleOutage = getActiveOutage({ scheduleId: schedule.id }, outages);
+      const routeOutage = getActiveOutage({ routeId: route.id }, outages, effectiveDate);
+      const vehicleOutage = getActiveOutage({ vehicleId: vehicle.id }, outages, effectiveDate);
+      const scheduleOutage = getActiveOutage({ scheduleId: schedule.id }, outages, effectiveDate);
 
       if (routeOutage || vehicleOutage || scheduleOutage) {
         const outage = routeOutage || vehicleOutage || scheduleOutage;
@@ -623,7 +639,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
         isBoardable = false;
       }
 
-      const activeDetour = getActiveDetour(route.id, detours);
+      const activeDetour = getActiveDetour(route.id, detours, effectiveDate);
       if (activeDetour && activeDetour.skippedStopIds.includes(student.stopId)) {
         blockReasons.push(
           `线路临时绕行：${activeDetour.reason}，该站点临时跳过，请前往 ${activeDetour.alternativeStopIds
@@ -679,7 +695,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
         }
       });
 
-      const weatherDelay = getActiveWeatherDelay(weatherDelays, route.id);
+      const weatherDelay = getActiveWeatherDelay(weatherDelays, route.id, effectiveDate);
       if (weatherDelay) {
         delayMinutes += weatherDelay.delayMinutes;
         routeStepData["weatherDelay"] = `${weatherDelay.delayMinutes}分钟（${weatherDelay.reason}）`;
@@ -689,7 +705,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
         delayMinutes += activeDetour.addedMinutes;
       }
 
-      const tempStop = getTempStop(schedule.id, student.stopId, tempStopRules);
+      const tempStop = getTempStop(schedule.id, student.stopId, tempStopRules, effectiveDate);
       if (tempStop) {
         delayMinutes += tempStop.duration;
         routeStepData["tempStop"] = `临时停靠${tempStop.duration}分钟：${tempStop.reason}`;
@@ -713,7 +729,6 @@ export function useBusDerivation(inputs: DerivationInputs) {
       }
 
       const boarded = hasBoarded(student.id, schedule.id, swipeRecords);
-      const driverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
       const finalDriverName = driverStatus === "replaced" || driverStatus === "leave"
         ? (driverSchedules.find((d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate)?.replacementDriverId
             ? drivers.find((d) => d.id === driverSchedules.find((ds) => ds.driverId === schedule.driverId && ds.scheduleId === schedule.id && ds.date === effectiveDate)?.replacementDriverId)?.name
@@ -860,16 +875,6 @@ export function useBusDerivation(inputs: DerivationInputs) {
 
     const transferHints = generateTransferHints(blockedRoutes, availableRoutes, student, stops, gradeRouteRules);
 
-    const systemState = {
-      weatherDelays: weatherDelays.filter((w) => w.isActive && isDateInRange(effectiveDate, w.effectiveDate)).length,
-      activeDetours: detours.filter((d) => d.isActive && isDateInRange(effectiveDate, d.startDate, d.endDate)).length,
-      activeOutages: outages.filter((o) => o.isActive && isDateInRange(effectiveDate, o.startDate, o.endDate)).length,
-      stopClosures: stopClosures.filter((c) => c.isActive && isDateInRange(effectiveDate, c.startDate, c.endDate)).length,
-      vehicleFaults: vehicles.filter((v) => v.status === "fault").length,
-      driverLeaves: driverSchedules.filter((d) => d.date === effectiveDate && d.status === "leave").length,
-      tempArrangements: tempArrangements.filter((t) => t.isActive && isDateInRange(effectiveDate, t.startDate, t.endDate)).length,
-    };
-
     return {
       studentId: student.id,
       studentName: student.name,
@@ -903,6 +908,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
     tempArrangements,
     swipeAbnormalRecords,
     dayOfWeek,
+    effectiveDate,
   ]);
 
   const stopArrivals = useMemo<StopArrival[]>(() => {
@@ -920,15 +926,15 @@ export function useBusDerivation(inputs: DerivationInputs) {
         const stopOrder = getStopOrderInRoute(route, stop.id);
         if (stopOrder < 0) continue;
 
-        const activeDetour = getActiveDetour(route.id, detours);
+        const activeDetour = getActiveDetour(route.id, detours, effectiveDate);
         if (activeDetour && activeDetour.skippedStopIds.includes(stop.id)) continue;
 
-        const routeOutage = getActiveOutage({ routeId: route.id }, outages);
-        const vehicleOutage = getActiveOutage({ vehicleId: vehicle.id }, outages);
-        const scheduleOutage = getActiveOutage({ scheduleId: schedule.id }, outages);
+        const routeOutage = getActiveOutage({ routeId: route.id }, outages, effectiveDate);
+        const vehicleOutage = getActiveOutage({ vehicleId: vehicle.id }, outages, effectiveDate);
+        const scheduleOutage = getActiveOutage({ scheduleId: schedule.id }, outages, effectiveDate);
         const isOutage = !!routeOutage || !!vehicleOutage || !!scheduleOutage;
 
-        const stopClosure = getActiveStopClosure(stop.id, stopClosures);
+        const stopClosure = getActiveStopClosure(stop.id, stopClosures, effectiveDate);
         const isClosed = stop.isClosed || !!stopClosure;
 
         let isShowing = true;
@@ -956,11 +962,11 @@ export function useBusDerivation(inputs: DerivationInputs) {
         }
 
         let delayMinutes = 0;
-        const weatherDelay = getActiveWeatherDelay(weatherDelays, route.id);
+        const weatherDelay = getActiveWeatherDelay(weatherDelays, route.id, effectiveDate);
         if (weatherDelay) delayMinutes += weatherDelay.delayMinutes;
         if (activeDetour) delayMinutes += activeDetour.addedMinutes;
 
-        const tempStop = getTempStop(schedule.id, stop.id, tempStopRules);
+        const tempStop = getTempStop(schedule.id, stop.id, tempStopRules, effectiveDate);
         if (tempStop) delayMinutes += tempStop.duration;
 
         const baseMinutes = getStopMinutesInRoute(route, stop.id);
@@ -1155,6 +1161,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
     stopCapacities,
     driverSchedules,
     dayOfWeek,
+    effectiveDate,
   ]);
 
   return {

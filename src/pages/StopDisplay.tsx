@@ -304,35 +304,35 @@ export default function StopDisplay() {
 
         {derivationResult?.systemState && (
           <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-            {derivationResult.systemState.weatherDelayCount > 0 && (
+            {derivationResult.systemState.weatherDelays > 0 && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
                 <CloudRain size={16} className="text-blue-500" />
                 <span className="text-sm text-blue-700 dark:text-blue-300">
-                  {derivationResult.systemState.weatherDelayCount} 条天气延误
+                  {derivationResult.systemState.weatherDelays} 条天气延误
                 </span>
               </div>
             )}
-            {derivationResult.systemState.detourCount > 0 && (
+            {derivationResult.systemState.activeDetours > 0 && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
                 <ArrowRight size={16} className="text-amber-500" />
                 <span className="text-sm text-amber-700 dark:text-amber-300">
-                  {derivationResult.systemState.detourCount} 条线路绕行
+                  {derivationResult.systemState.activeDetours} 条线路绕行
                 </span>
               </div>
             )}
-            {derivationResult.systemState.outageCount > 0 && (
+            {derivationResult.systemState.activeOutages > 0 && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-crimson-50 dark:bg-crimson-950/30 border border-crimson-200 dark:border-crimson-800">
                 <AlertTriangle size={16} className="text-crimson-500" />
                 <span className="text-sm text-crimson-700 dark:text-crimson-300">
-                  {derivationResult.systemState.outageCount} 个班次停运
+                  {derivationResult.systemState.activeOutages} 个班次停运
                 </span>
               </div>
             )}
-            {derivationResult.systemState.stopClosureCount > 0 && (
+            {derivationResult.systemState.stopClosures > 0 && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800">
                 <ShieldAlert size={16} className="text-purple-500" />
                 <span className="text-sm text-purple-700 dark:text-purple-300">
-                  {derivationResult.systemState.stopClosureCount} 个站点封闭
+                  {derivationResult.systemState.stopClosures} 个站点封闭
                 </span>
               </div>
             )}

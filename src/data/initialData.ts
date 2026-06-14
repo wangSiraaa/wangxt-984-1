@@ -26,12 +26,24 @@ import type {
 import { todayStr, uid, addDays } from "@/lib/utils";
 
 const today = todayStr();
+const future365 = new Date();
+future365.setDate(future365.getDate() + 365);
+const future365Str = future365.toISOString().slice(0, 10);
+const past365 = new Date();
+past365.setDate(past365.getDate() - 365);
+const past365Str = past365.toISOString().slice(0, 10);
 const future30 = new Date();
 future30.setDate(future30.getDate() + 30);
 const future30Str = future30.toISOString().slice(0, 10);
 const past30 = new Date();
 past30.setDate(past30.getDate() - 30);
 const past30Str = past30.toISOString().slice(0, 10);
+const future90 = new Date();
+future90.setDate(future90.getDate() + 90);
+const future90Str = future90.toISOString().slice(0, 10);
+const past90 = new Date();
+past90.setDate(past90.getDate() - 90);
+const past90Str = past90.toISOString().slice(0, 10);
 const future7 = new Date();
 future7.setDate(future7.getDate() + 7);
 const future7Str = future7.toISOString().slice(0, 10);
@@ -390,11 +402,11 @@ export const initialWeatherDelays: WeatherDelay[] = [
 ];
 
 export const initialParentAuths: ParentAuth[] = [
-  { id: "PA001", studentId: "ST001", routeIds: ["R003"], authorizedAt: past30Str, expiresAt: future30Str, parentName: "明父", parentPhone: "13700137001" },
-  { id: "PA002", studentId: "ST002", routeIds: ["R003", "R001"], authorizedAt: past30Str, expiresAt: future30Str, parentName: "红母", parentPhone: "13700137002" },
-  { id: "PA003", studentId: "ST003", routeIds: ["R001", "R002", "R003"], authorizedAt: past30Str, expiresAt: future30Str, parentName: "刚父", parentPhone: "13700137003" },
-  { id: "PA004", studentId: "ST004", routeIds: ["R001", "R002", "R003", "R004"], authorizedAt: past30Str, expiresAt: future30Str, parentName: "丽母", parentPhone: "13700137004" },
-  { id: "PA005", studentId: "ST005", routeIds: ["R001", "R002", "R004"], authorizedAt: past30Str, expiresAt: future30Str, parentName: "强父", parentPhone: "13700137005" },
+  { id: "PA001", studentId: "ST001", routeIds: ["R003"], authorizedAt: past365Str, expiresAt: future365Str, parentName: "明父", parentPhone: "13700137001" },
+  { id: "PA002", studentId: "ST002", routeIds: ["R003", "R001"], authorizedAt: past365Str, expiresAt: future365Str, parentName: "红母", parentPhone: "13700137002" },
+  { id: "PA003", studentId: "ST003", routeIds: ["R001", "R002", "R003"], authorizedAt: past365Str, expiresAt: future365Str, parentName: "刚父", parentPhone: "13700137003" },
+  { id: "PA004", studentId: "ST004", routeIds: ["R001", "R002", "R003", "R004"], authorizedAt: past365Str, expiresAt: future365Str, parentName: "丽母", parentPhone: "13700137004" },
+  { id: "PA005", studentId: "ST005", routeIds: ["R001", "R002", "R004"], authorizedAt: past365Str, expiresAt: future365Str, parentName: "强父", parentPhone: "13700137005" },
 ];
 
 export const initialLeaveRecords: LeaveRecord[] = [
@@ -449,44 +461,48 @@ export interface DynamicInitialData {
 }
 
 export function generateDynamicInitialData(baseDate: string = todayStr()): DynamicInitialData {
+  const past365 = addDays(baseDate, -365);
+  const past90 = addDays(baseDate, -90);
   const past30 = addDays(baseDate, -30);
   const past7 = addDays(baseDate, -7);
   const future7 = addDays(baseDate, 7);
   const future30 = addDays(baseDate, 30);
+  const future90 = addDays(baseDate, 90);
+  const future365 = addDays(baseDate, 365);
 
   return {
     gradeRouteRules: [
-      { id: "GRR001", grade: 1, allowedRouteIds: ["R003"], requireEscort: true, description: "一年级学生仅限乘坐3号线（南门-公寓专线），必须由家长或老师护送", effectiveDate: past30 },
-      { id: "GRR002", grade: 2, allowedRouteIds: ["R001", "R003"], requireEscort: true, description: "二年级学生可乘坐1号线和3号线，必须由家长或老师护送", effectiveDate: past30 },
-      { id: "GRR003", grade: 3, allowedRouteIds: ["R001", "R002", "R003"], requireEscort: false, description: "三年级学生可乘坐1、2、3号线，无需护送", effectiveDate: past30 },
-      { id: "GRR004", grade: 4, allowedRouteIds: ["R001", "R002", "R003", "R004"], requireEscort: false, description: "四年级及以上学生所有线路均可乘坐", effectiveDate: past30 },
-      { id: "GRR005", grade: 5, allowedRouteIds: ["R001", "R002", "R003", "R004"], requireEscort: false, description: "四年级及以上学生所有线路均可乘坐", effectiveDate: past30 },
-      { id: "GRR006", grade: 6, allowedRouteIds: ["R001", "R002", "R003", "R004"], requireEscort: false, description: "四年级及以上学生所有线路均可乘坐", effectiveDate: past30 },
+      { id: "GRR001", teacherId: "T001", grade: 1, allowedRouteIds: ["R003"], effectiveDate: past30, note: "一年级学生仅限乘坐3号线（南门-公寓专线）" },
+      { id: "GRR002", teacherId: "T001", grade: 2, allowedRouteIds: ["R001", "R003"], effectiveDate: past30, note: "二年级学生可乘坐1号线和3号线" },
+      { id: "GRR003", teacherId: "T001", grade: 3, allowedRouteIds: ["R001", "R002", "R003"], effectiveDate: past30, note: "三年级学生可乘坐1、2、3号线" },
+      { id: "GRR004", teacherId: "T002", grade: 4, allowedRouteIds: ["R001", "R002", "R003", "R004"], effectiveDate: past30, note: "四年级及以上学生所有线路均可乘坐" },
+      { id: "GRR005", teacherId: "T002", grade: 5, allowedRouteIds: ["R001", "R002", "R003", "R004"], effectiveDate: past30, note: "四年级及以上学生所有线路均可乘坐" },
+      { id: "GRR006", teacherId: "T002", grade: 6, allowedRouteIds: ["R001", "R002", "R003", "R004"], effectiveDate: past30, note: "四年级及以上学生所有线路均可乘坐" },
     ],
     tempStopRules: [
-      { id: "TSR001", stopId: "S003", scheduleId: "SCH002", startTime: "07:35", endTime: "07:40", reason: "新生报到临时停靠", effectiveDate: baseDate, endDate: future7, isActive: true },
-      { id: "TSR002", stopId: "S009", scheduleId: "SCH005", startTime: "17:20", endTime: "17:25", reason: "食堂加餐后临时停靠", effectiveDate: baseDate, endDate: future7, isActive: true },
+      { id: "TSR001", teacherId: "T001", stopId: "S003", scheduleId: "SCH002", duration: 5, reason: "新生报到临时停靠", effectiveDate: baseDate, endDate: future7 },
+      { id: "TSR002", teacherId: "T001", stopId: "S009", scheduleId: "SCH005", duration: 3, reason: "食堂加餐后临时停靠", effectiveDate: baseDate, endDate: future7 },
     ],
     detours: [
       { id: "DET001", routeId: "R001", skippedStopIds: ["S004"], alternativeStopIds: ["S005"], addedMinutes: 3, reason: "体育馆施工绕行实验楼站", startDate: past7, endDate: future30, isActive: true },
       { id: "DET002", routeId: "R004", skippedStopIds: ["S010"], alternativeStopIds: ["S009"], addedMinutes: 2, reason: "行政楼前道路临时管制", startDate: past7, endDate: future7, isActive: true },
     ],
     outages: [
-      { id: "OUT001", vehicleId: "V003", routeId: "R002", replacementVehicleId: "V007", reason: "发动机故障检修", startDate: past7, endDate: future7, isActive: true },
+      { id: "OUT001", vehicleId: "V003", routeId: "R002", reason: "发动机故障检修", startDate: past7, endDate: future7, isActive: true },
     ],
     stopClosures: [
-      { id: "SC001", stopId: "S004", alternativeStopId: "S005", reason: "施工围挡，体育馆站暂停使用", startDate: past7, endDate: future30, isActive: true, estimatedDurationMinutes: 45 },
-      { id: "SC002", stopId: "S010", alternativeStopId: "S009", reason: "行政楼区域临时交通管制", startDate: past7, endDate: future7, isActive: true, estimatedDurationMinutes: 30 },
+      { id: "SC001", stopId: "S004", alternativeStopId: "S005", reason: "施工围挡，体育馆站暂停使用", startDate: past7, endDate: future30, isActive: true },
+      { id: "SC002", stopId: "S010", alternativeStopId: "S009", reason: "行政楼区域临时交通管制", startDate: past7, endDate: future7, isActive: true },
     ],
     weatherDelays: [
       { id: "WD001", routeId: undefined, delayMinutes: 8, reason: "中雨导致部分路段拥堵，所有线路预计延误5-10分钟", effectiveDate: baseDate, weatherType: "rain", severity: "moderate", isActive: true },
     ],
     parentAuths: [
-      { id: "PA001", studentId: "ST001", routeIds: ["R003"], authorizedAt: past30, expiresAt: future30, parentName: "明父", parentPhone: "13700137001" },
-      { id: "PA002", studentId: "ST002", routeIds: ["R003", "R001"], authorizedAt: past30, expiresAt: future30, parentName: "红母", parentPhone: "13700137002" },
-      { id: "PA003", studentId: "ST003", routeIds: ["R001", "R002", "R003"], authorizedAt: past30, expiresAt: future30, parentName: "刚父", parentPhone: "13700137003" },
-      { id: "PA004", studentId: "ST004", routeIds: ["R001", "R002", "R003", "R004"], authorizedAt: past30, expiresAt: future30, parentName: "丽母", parentPhone: "13700137004" },
-      { id: "PA005", studentId: "ST005", routeIds: ["R001", "R002", "R004"], authorizedAt: past30, expiresAt: future30, parentName: "强父", parentPhone: "13700137005" },
+      { id: "PA001", studentId: "ST001", routeIds: ["R003"], authorizedAt: past365, expiresAt: future365, parentName: "明父", parentPhone: "13700137001" },
+      { id: "PA002", studentId: "ST002", routeIds: ["R003", "R001"], authorizedAt: past365, expiresAt: future365, parentName: "红母", parentPhone: "13700137002" },
+      { id: "PA003", studentId: "ST003", routeIds: ["R001", "R002", "R003"], authorizedAt: past365, expiresAt: future365, parentName: "刚父", parentPhone: "13700137003" },
+      { id: "PA004", studentId: "ST004", routeIds: ["R001", "R002", "R003", "R004"], authorizedAt: past365, expiresAt: future365, parentName: "丽母", parentPhone: "13700137004" },
+      { id: "PA005", studentId: "ST005", routeIds: ["R001", "R002", "R004"], authorizedAt: past365, expiresAt: future365, parentName: "强父", parentPhone: "13700137005" },
     ],
     leaveRecords: [
       {

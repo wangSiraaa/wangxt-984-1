@@ -21,9 +21,13 @@ export type HistoryAction =
   | "full"
   | "weather_delay"
   | "swipe"
+  | "swipe_abnormal"
   | "leave"
   | "authorize"
-  | "rule_change";
+  | "rule_change"
+  | "driver_status"
+  | "abnormal"
+  | "derivation_snapshot";
 
 export interface RouteStop {
   stopId: string;
@@ -374,7 +378,7 @@ export interface BoardingHint {
   routeId: string;
   type: "info" | "warning" | "error" | "success";
   message: string;
-  details?: Record<string, unknown>;
+  details?: string;
   timestamp: string;
 }
 
@@ -392,9 +396,9 @@ export interface HistoryDerivationSnapshot {
   id: string;
   studentId: string;
   timestamp: string;
-  availableRoutes: string[];
-  blockedRoutes: RouteInvisibilityReason[];
-  derivationSteps: RuleStep[];
+  availableRoutes: { routeId: string; routeName: string; routeCode: string; estimatedArrival: string }[];
+  blockedRoutes: { routeId: string; routeName: string; routeCode: string; blockReason: string }[];
+  steps: RuleStep[];
   systemState: Record<string, unknown>;
 }
 

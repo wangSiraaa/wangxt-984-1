@@ -685,7 +685,7 @@ export default function StudentView() {
           <div className="space-y-3">
             {derivationResult.blockedRoutes.map((route) => {
               const isExpanded = expandedBlockedRoute === route.scheduleId;
-              const invisibilityReasons = (route as any).invisibilityReasons as RouteInvisibilityReason[] | undefined;
+              const invisibilityReasons = route.invisibilityReasons;
               return (
                 <div
                   key={route.scheduleId}

@@ -233,7 +233,8 @@ function generateTransferHints(
   availableRoutes: AvailableRoute[],
   student: Student,
   stops: Stop[],
-  gradeRouteRules: GradeRouteRule[]
+  gradeRouteRules: GradeRouteRule[],
+  effectiveDate: string
 ): string[] {
   const hints: string[] = [];
   
@@ -308,7 +309,8 @@ function generateBoardingHints(
   rollCallStatus: RollCallStatus,
   hasAbnormal: boolean,
   stopCapacity: StopCapacity | undefined,
-  tempArrangements: TempArrangement[]
+  tempArrangements: TempArrangement[],
+  effectiveDate: string
 ): BoardingHint[] {
   const hints: BoardingHint[] = [];
   const now = new Date().toISOString();
@@ -618,9 +620,9 @@ export function useBusDerivation(inputs: DerivationInputs) {
         isBoardable = false;
       }
 
-      const driverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
-      routeStepData["driverStatus"] = driverStatus;
-      if (driverStatus === "leave" || driverStatus === "off_duty") {
+      const routeDriverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
+      routeStepData["driverStatus"] = routeDriverStatus;
+      if (routeDriverStatus === "leave" || routeDriverStatus === "off_duty") {
         const ds = driverSchedules.find(
           (d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate
         );
@@ -628,7 +630,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
           const replacementDriver = drivers.find((d) => d.id === ds.replacementDriverId);
           routeStepData["replacementDriver"] = replacementDriver?.name;
         } else {
-          blockReasons.push(`司机${driverStatus === "leave" ? "请假" : "未到岗"}，暂无代班司机`);
+          blockReasons.push(`司机${routeDriverStatus === "leave" ? "请假" : "未到岗"}，暂无代班司机`);
           isBoardable = false;
         }
       }
@@ -729,7 +731,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
       }
 
       const boarded = hasBoarded(student.id, schedule.id, swipeRecords);
-      const finalDriverName = driverStatus === "replaced" || driverStatus === "leave"
+      const finalDriverName = routeDriverStatus === "replaced" || routeDriverStatus === "leave"
         ? (driverSchedules.find((d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate)?.replacementDriverId
             ? drivers.find((d) => d.id === driverSchedules.find((ds) => ds.driverId === schedule.driverId && ds.scheduleId === schedule.id && ds.date === effectiveDate)?.replacementDriverId)?.name
             : driver.name)
@@ -756,7 +758,8 @@ export function useBusDerivation(inputs: DerivationInputs) {
         rollCallStatus,
         !!abnormalSwipe,
         stopCapacity,
-        activeTempArrangements
+        activeTempArrangements,
+        effectiveDate
       );
       const boardingHints = [...baseBoardingHints];
       if (student.grade <= 3 && isBoardable) {
@@ -801,7 +804,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
         vehicleId: vehicle.id,
         vehiclePlate: vehicle.plateNumber,
         driverName: finalDriverName,
-        driverStatus,
+        driverStatus: routeDriverStatus,
         availableSeats: Math.max(0, availableSeats),
         isBoardable,
         boarded,
@@ -873,7 +876,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
       },
     });
 
-    const transferHints = generateTransferHints(blockedRoutes, availableRoutes, student, stops, gradeRouteRules);
+    const transferHints = generateTransferHints(blockedRoutes, availableRoutes, student, stops, gradeRouteRules, effectiveDate);
 
     return {
       studentId: student.id,
@@ -950,14 +953,14 @@ export function useBusDerivation(inputs: DerivationInputs) {
           hideReason = vehicle.status === "fault" ? "车辆故障" : "车辆年检过期";
         }
 
-        const driverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
-        if (driverStatus === "leave" || driverStatus === "off_duty") {
+        const stopDriverStatus = getDriverScheduleStatus(schedule.driverId, schedule.id, driverSchedules, effectiveDate);
+        if (stopDriverStatus === "leave" || stopDriverStatus === "off_duty") {
           const ds = driverSchedules.find(
             (d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate
           );
           if (!ds?.replacementDriverId) {
             isShowing = false;
-            hideReason = `司机${driverStatus === "leave" ? "请假" : "未到岗"}`;
+            hideReason = `司机${stopDriverStatus === "leave" ? "请假" : "未到岗"}`;
           }
         }
 
@@ -1059,7 +1062,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
           });
         }
 
-        if (driverStatus === "replaced") {
+        if (stopDriverStatus === "replaced") {
           const ds = driverSchedules.find(
             (d) => d.driverId === schedule.driverId && d.scheduleId === schedule.id && d.date === effectiveDate
           );
@@ -1125,7 +1128,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
           hideReason,
           isClosed,
           closureHint: stopClosure?.reason,
-          driverStatus,
+          driverStatus: stopDriverStatus,
           stopCurrentCount: stopCapacity?.currentCount,
           stopMaxCapacity: stopCapacity?.maxCapacity,
           rollCallPresent,
@@ -1152,6 +1155,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
     stops,
     vehicles,
     schedules,
+    drivers,
     detours,
     outages,
     stopClosures,
@@ -1160,6 +1164,7 @@ export function useBusDerivation(inputs: DerivationInputs) {
     teacherRollCalls,
     stopCapacities,
     driverSchedules,
+    tempArrangements,
     dayOfWeek,
     effectiveDate,
   ]);
